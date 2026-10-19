@@ -1,0 +1,6 @@
+# Linux localhost relay needs an actually reachable relay interface, without Docker hairpin NAT.
+services:
+  coturn:
+    network_mode: host
+    ports: !reset []
+    command: ["test -r /etc/coturn/turnserver.conf && exec turnserver -c /etc/coturn/turnserver.conf --relay-ip ${TURN_HOST:-127.0.0.1}"]

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+infra/coturn/turnserver.dev.conf
+test-results/
+playwright-report/
+.test-profiles/
+*.log

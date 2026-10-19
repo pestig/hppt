@@ -1,0 +1,2 @@
+@import './theme.css';
+body { background-image: url('../leaf.svg'); background-repeat: no-repeat; background-position: right top; }

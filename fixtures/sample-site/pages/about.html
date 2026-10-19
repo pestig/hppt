@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Garden notes · HPPT sample</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <main class="garden">
+    <header><a class="brand" href="../index.html">Little Garden</a><span class="badge">The second page</span></header>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">One folder deeper.</p>
+        <h1>Garden notes.</h1>
+        <p class="intro">You followed a relative link into the pages folder. This page loads its stylesheet and illustration using parent-directory paths.</p>
+        <a class="button" href="../index.html">← Back to the garden</a>
+      </div>
+      <img class="illustration" src="../assets/garden.svg" width="420" height="360" alt="Three green plants in terracotta pots">
+    </section>
+    <section class="note" id="checklist">
+      <p class="eyebrow">Manual test checklist</p>
+      <h2>A healthy little site</h2>
+      <ul>
+        <li>The home page shows styled cards and a plant illustration.</li>
+        <li>The watering button updates its message on every click.</li>
+        <li>Both navigation links load the correct page and its local resources.</li>
+        <li>The app’s displayed address retains <code>?from=home#checklist</code> when arriving from home.</li>
+        <li>After a complete offline save, both pages work when reopened offline.</li>
+      </ul>
+      <p>To try a different entrypoint, publish the same folder with <code>pages/about.html</code> selected as the starting file.</p>
+    </section>
+    <footer>A small static site for testing HPPT.</footer>
+  </main>
+</body>
+</html>

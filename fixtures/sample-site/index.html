@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Little Garden · HPPT sample</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <main class="garden">
+    <header><a class="brand" href="index.html">Little Garden</a><span class="badge">HPPT test site</span></header>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">A small site that travels.</p>
+        <h1>Hello from<br>another peer.</h1>
+        <p class="intro">A tiny garden of local HTML, CSS, JavaScript and images. Publish this folder, share its address, and watch it grow in another browser.</p>
+        <a class="button" href="pages/about.html?from=home#checklist">Explore the second page →</a>
+      </div>
+      <img class="illustration" src="assets/garden.svg" width="420" height="360" alt="Three green plants growing in terracotta pots beneath a golden sun">
+    </section>
+    <section class="cards" aria-label="Things to try">
+      <article><span class="number">01 / STYLE</span><h2>See the garden</h2><p>Green headings, rounded cards and the illustration confirm that local CSS and SVG files loaded.</p></article>
+      <article><span class="number">02 / SCRIPT</span><h2>Water a plant</h2><p>Try the button to check classic JavaScript.</p><button id="water" type="button">Add a little water</button><p id="water-status" role="status" aria-live="polite">The garden is ready for water.</p></article>
+      <article><span class="number">03 / OFFLINE</span><h2>Take it with you</h2><p>Use the app’s offline save action. Once it says “Offline elérhető”, try reopening it with the same browser profile and the servers stopped.</p></article>
+    </section>
+    <footer>All resources live in this folder. No external services or downloads.</footer>
+  </main>
+  <script src="assets/main.js"></script>
+</body>
+</html>

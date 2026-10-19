@@ -1,0 +1,10 @@
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+if (existsSync('.env')) process.loadEnvFile('.env');
+const executable = process.env.TURNSERVER_BIN || 'turnserver';
+const args = ['-c', 'infra/coturn/turnserver.dev.conf'];
+if (process.env.TURN_HOST === '127.0.0.1') args.push('--relay-ip', '127.0.0.1');
+const child = spawn(executable, args, { stdio: 'inherit' });
+child.on('error', () => { console.error('Install coturn locally, or set TURNSERVER_BIN to the installed binary. Run setup:dev first.'); process.exitCode = 1; });
+child.on('exit', code => { process.exitCode = code || 0; });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));

@@ -1,0 +1,12 @@
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+if (existsSync('.env')) process.loadEnvFile('.env');
+const action = process.argv[2];
+const operations = { up: ['up', '-d', '--build', '--wait'], down: ['down'], logs: ['logs', '--tail=100'] };
+if (!operations[action]) throw new Error('Expected up, down or logs');
+const info = spawnSync('docker', ['info', '--format', '{{.OperatingSystem}}'], { encoding: 'utf8' });
+const nativeLinux = process.platform === 'linux' && info.status === 0 && !info.stdout.toLowerCase().includes('desktop');
+const files = process.env.COMPOSE_FILE ? [] : nativeLinux ? ['-f', 'compose.yaml', '-f', 'compose.linux.yaml'] : [];
+if (action === 'up' && !nativeLinux) console.log('Docker Desktop/VM: verify relay with test:relay; use a local coturn (turn:native) or reachable Linux TURN if UDP relay is inaccessible.');
+const result = spawnSync('docker', ['compose', ...files, ...operations[action]], { stdio: 'inherit' });
+process.exitCode = result.status ?? 1;

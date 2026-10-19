@@ -1,0 +1,26 @@
+name: verify
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: npm }
+      - run: npm ci
+      - run: npm run setup:dev
+      - run: npm run lint && npm run typecheck && npm run test:unit && npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: browser-report, path: playwright-report }
+  relay:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: npm }
+      - run: npm ci && npm run setup:dev
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:relay

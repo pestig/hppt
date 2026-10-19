@@ -1,0 +1,11 @@
+node_modules
+.env
+.git
+.agents
+.aws
+.codex
+**/dist
+infra/coturn/turnserver.dev.conf
+test-results
+playwright-report
+.test-profiles

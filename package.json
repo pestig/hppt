@@ -1,0 +1,47 @@
+{
+  "name": "htppt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup:dev": "node scripts/setup-dev.mjs",
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build --config apps/web/vite.config.ts && vite build --config apps/viewer/vite.config.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:relay": "node scripts/test-relay.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "infra:up": "node scripts/infra.mjs up",
+    "infra:down": "node scripts/infra.mjs down",
+    "infra:logs": "node scripts/infra.mjs logs",
+    "serve": "node scripts/dev.mjs --production",
+    "services": "node scripts/dev.mjs --services",
+    "turn:native": "node scripts/run-turn-native.mjs"
+  },
+  "dependencies": {
+    "bittorrent-tracker": "11.2.3",
+    "memory-chunk-store": "1.3.5",
+    "postcss": "8.5.31",
+    "postcss-value-parser": "4.2.0",
+    "webtorrent": "3.0.21",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.10.1",
+    "eslint": "10.13.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  }
+}

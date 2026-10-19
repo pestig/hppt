@@ -1,0 +1,29 @@
+services:
+  tracker:
+    image: htppt-tracker:0.1.0
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.tracker
+    ports: ["127.0.0.1:8000:8000"]
+    environment: { PORT: "8000" }
+    restart: unless-stopped
+  ice-api:
+    image: htppt-ice-api:0.1.0
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.ice-api
+    ports: ["127.0.0.1:3001:3001"]
+    env_file: .env
+    environment: { PORT: "3001" }
+    restart: unless-stopped
+  coturn:
+    image: ${COTURN_IMAGE:?Run npm run setup:dev}
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["test -r /etc/coturn/turnserver.conf && exec turnserver -c /etc/coturn/turnserver.conf"]
+    volumes: ["./infra/coturn/turnserver.dev.conf:/etc/coturn/turnserver.conf:ro"]
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+    restart: unless-stopped
