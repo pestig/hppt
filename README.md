@@ -16,7 +16,7 @@ npm run dev
 | Szolgáltatás | Cím |
 |---|---|
 | Vezérlő UI | http://app.hppt.localhost:5173 |
-| Külön originű viewer | http://hppt.localhost:5174 |
+| Külön originű viewer | http://hppt.localhost:5173 |
 | WebSocket tracker | ws://localhost:8000 |
 | ICE API | http://localhost:3001/ice |
 
@@ -24,7 +24,7 @@ A vezérlő UI-t az `APP_ORIGIN` címén nyisd meg (alapból `http://app.hppt.lo
 
 Új build telepítésekor a Service Worker előbb cache-eli az új indítófájlokat, majd egyszer újratölti a nyitott vezérlőfelületeket. A tartósan mentett csomagok megmaradnak. Ha egy régi verzió még beragadt, a `http://app.hppt.localhost:5173/refresh` cím a régi indítóoldal-cache megkerülésével tölti be a friss alkalmazást; tárhelytörlés nem szükséges.
 
-A `setup:dev` idempotens: megőrzi a credentialt, `.env`-et és helyi coturn-konfigurációt készít. Mindkettő gitignore-olt. A `dev` buildeli és párhuzamosan kiszolgálja a két alkalmazást a Service Worker precache-listáival; módosítás után újraindítandó. Kész buildhez `npm run serve` használható.
+A `setup:dev` idempotens: megőrzi a credentialt, `.env`-et és helyi coturn-konfigurációt készít. Mindkettő gitignore-olt. A `dev` elkészíti a két célzott buildet, majd egyetlen Vite preview szerverrel, azonos porton szolgálja ki őket a hosztnév alapján. A vezérlő és a viewer saját indítófájlokat, Service Workert és precache-listát kap; módosítás után újraindítandó. Kész buildhez `npm run serve` használható.
 
 Az `infra:up` valódi Linux Docker Engine alatt a coturnhoz host hálózatot választ. Docker Desktop alatt az alap portmappinget használja; a TURN UDP-relay útvonal itt külön ellenőrzendő. Ebben a fejlesztői környezetben a Docker Desktop relay candidate-et adott, de működő adatátvitelhez natív coturn kellett:
 
@@ -51,9 +51,11 @@ Az `index.html` nem kötelező. A `fixtures/nested-site` demónál válaszd a `p
 
 A protokollkezelő regisztrációja külön gombbal történik, támogatott böngészőben. Mindig használható a beillesztés és a belépési link. A hordozható böngészős séma `web+hppt://`, a natív `hppt://` nem része az MVP-nek.
 
-A protokollkezelő és az `/open?uri=…` belépési link ugyanazon a lapon navigál a saját viewer-címre, például `http://<hash>.hppt.localhost:5174/pages/home.html?mode=1#details`. Teljes helyi csomagnál ellenőrzi és előkészíti a tartós viewer-cache-t, majd átirányít; nem indít WebTorrent/WebRTC klienst vagy külön alkalmazáslapot. Letöltéshez az azonos böngészőprofilban már nyitott HPPT alkalmazást használja, ennek hiányában külön alkalmazáslapot indít. Ha a böngésző ezt blokkolja, a belépési oldalon megjelenik a „HPPT alkalmazás indítása” gomb. A letöltéshez és továbbosztáshoz az alkalmazáslap maradjon nyitva. Az alkalmazás beillesztőmezője és könyvtára továbbra is külön viewer-lapot nyit.
+A protokollkezelő és az `/open?uri=…` belépési link ugyanazon a lapon navigál a saját viewer-címre, például `http://<hash>.hppt.localhost:5173/pages/home.html?mode=1#details`. Teljes helyi csomagnál ellenőrzi és előkészíti a tartós viewer-cache-t, majd átirányít; nem indít WebTorrent/WebRTC klienst vagy külön alkalmazáslapot. Letöltéshez az azonos böngészőprofilban már nyitott HPPT alkalmazást használja, ennek hiányában külön alkalmazáslapot indít. Ha a böngésző ezt blokkolja, a belépési oldalon megjelenik a „HPPT alkalmazás indítása” gomb. A letöltéshez és továbbosztáshoz az alkalmazáslap maradjon nyitva. Az alkalmazás beillesztőmezője és könyvtára továbbra is külön viewer-lapot nyit.
 
-A közvetlen `http://<hash>.hppt.localhost:5174/<path>` viewer-link friss, például inkognitó profilban is megnyitható. Ha ott még nincs az oldalhoz Service Worker, a viewer host a felső szintű oldalmegnyitást a belépési linkre irányítja; az előkészítés után ugyanaz a lap visszatér a viewer-címre, megőrizve a queryt és fragmentet. Az inkognitó saját HPPT alkalmazását használja, a normál profilban nyitott publikáló pedig peer marad: a letöltéshez azt is nyitva kell tartani. Közönséges fetch- és erőforráskérések továbbra sem kapnak csomagfájlt HTTP-n. Más statikus host/reverse proxy telepítésénél ezt a navigációs átirányítási szabályt is biztosítani kell.
+A közvetlen `http://<hash>.hppt.localhost:5173/<path>` viewer-link friss, például inkognitó profilban is megnyitható. Ha ott még nincs az oldalhoz Service Worker, a viewer host a felső szintű oldalmegnyitást a belépési linkre irányítja; az előkészítés után ugyanaz a lap visszatér a viewer-címre, megőrizve a queryt és fragmentet. Az inkognitó saját HPPT alkalmazását használja, a normál profilban nyitott publikáló pedig peer marad: a letöltéshez azt is nyitva kell tartani. Közönséges fetch- és erőforráskérések továbbra sem kapnak csomagfájlt HTTP-n. Más statikus host/reverse proxy telepítésénél ezt a navigációs átirányítási szabályt is biztosítani kell.
+
+A korábbi helyi viewer `5174` portját a konfiguráció automatikusan az alkalmazás portjára normalizálja; a `setup:dev` ezt a `.env`-ben is frissíti, a titkok megőrzésével. Az új viewer-címek `5173`-at használnak. A vezérlő originje és helyi csomagtára megmarad: a könyvtár frissítése az új viewer-originen is előkészíti a mentett csomagokat. A régi viewer-origin saját cache-e nem költözik át automatikusan.
 
 ## Offline működés és tárolás
 
@@ -68,7 +70,7 @@ Első használatkor hálózati hozzáférés kell. Tárhelytörlés, böngésző
 A HPPT alkalmazásban marad a WebTorrent/WebRTC engine. Minden csomag külön originen, normál böngészőlapon jelenik meg, például:
 
 ```text
-http://<infoHash>.hppt.localhost:5174/pages/home.html?mode=1#details
+http://<infoHash>.hppt.localhost:5173/pages/home.html?mode=1#details
 ```
 
 Az oldal saját Service Workere az eredeti fájlbytes tartalmat adja vissza. Cache-hiánykor dedikált MessagePorton kéri a fájlt a nyitott HPPT alkalmazástól. A natív böngésző kezeli a HTML-t, CSS importokat, képeket, ES-modulokat, relatív navigációt, queryt és fragmentet. Nincs HTML/CSS-átírás, data URL-es csomagolás vagy megjelenítő iframe. A vezérlő UI rejtett, oldalankénti `__hppt` helper frame-je kizárólag a worker és az alkalmazás közötti üzenetkapcsolatot tartja fenn, és worker-újraindulás után újraköti azt.
@@ -91,9 +93,9 @@ npm run setup:dev -- --turn-host 192.168.1.50
 
 LAN/mobil teszthez a `http://192.168.x.x` nem localhost secure context. Mindkét originhez megbízható HTTPS, a trackerhez WSS, elérhető TURN IP és megfelelő tűzfal/NAT szükséges. A telefon `localhost` címe a telefont jelenti. A Vite kiszolgáló loopbacken figyel; LAN/publikus eléréshez HTTPS reverse proxy vagy külön statikus host kell. A frontend hostnevek legyenek a böngészőből elérhetők, ne Compose szolgáltatásnevek.
 
-Productionban például `APP_ORIGIN=https://app.example.com` és `VIEWER_ORIGIN=https://sites.example.com` használható. A `<hash>.sites.example.com` hostokhoz wildcard DNS és megbízható wildcard TLS-tanúsítvány kell; a viewer originjei legyenek cookie-mentesek, az alkalmazás hitelesítése host-only cookie-t használjon. A helper és a külön megnyitott oldal tárhelyének megosztásához azonos schemeful site szükséges.
+Az `APP_ORIGIN` és `VIEWER_ORIGIN` külön hosztnevet, de azonos sémát és portot használjon. Productionban például `APP_ORIGIN=https://app.example.com` és `VIEWER_ORIGIN=https://sites.example.com` használható; mindkettő HTTPS 443. A `<hash>.sites.example.com` hostokhoz wildcard DNS és megbízható wildcard TLS-tanúsítvány kell; a viewer originjei legyenek cookie-mentesek, az alkalmazás hitelesítése host-only cookie-t használjon. A helper és a külön megnyitott oldal tárhelyének megosztásához azonos schemeful site szükséges.
 
-A viewer host kizárólag a `/__hppt/` útvonaltérben szolgálhat ki megbízható indítófájlokat; ezt a prefixet a viewer build könyvtárára kell képezni. A workerhez `Service-Worker-Allowed: /` fejléc kell. Minden egyéb útvonal szerveroldalon 503/404, HTTP payload- és SPA-fallback nélkül. A CSP-, nosniff- és origin-fejléceket a [Vite host-konfiguráció](scripts/vite-shared.ts) szerint állítsd be. A UI `/runtime-config.json`, illetve a viewer `/__hppt/runtime-config.json` végpontja csak publikus beállításokat tartalmazhat.
+Az egyetlen frontend-szerver a vezérlő hosztnevén az `apps/web/dist`, a viewer és `<hash>` hosztnevein az `apps/viewer/dist` fájljait szolgálja ki. A viewer host kizárólag a `/__hppt/` útvonaltérben, a generált precache-listában szereplő megbízható indítófájlokat adhatja vissza; a prefixet a viewer build könyvtárára kell képezni. A workerhez `Service-Worker-Allowed: /` fejléc kell. A közvetlen felső szintű oldalmegnyitás 302-vel indul a launcher felé; más csomagfájl-kérés szerveroldalon 503/404, HTTP payload- és SPA-fallback nélkül. A CSP-, nosniff- és origin-fejléceket a [Vite host-konfiguráció](scripts/vite-shared.ts) szerint állítsd be. A UI `/runtime-config.json`, illetve a viewer `/__hppt/runtime-config.json` végpontja csak publikus beállításokat tartalmazhat.
 
 Saját felhasználókezelés nincs. A production ICE API külső hitelesítő gatewayt feltételez, szerveroldali `TURN_SECRET` és `AUTH_PROXY_TOKEN` beállítással. A gateway levágja a bejövő `X-Authenticated-User`/`X-HTPPT-Gateway-Token` fejléceket, majd a hitelesített azonosítót és saját titkos gateway-tokenjét állítja be. Az ICE API csak a gateway felől legyen elérhető. A gateway-token és TURN shared secret sosem kerülhet frontendbe. A credential endpoint szűk CORS-t, no-store-t, rate limitet és kiadási kvótát használ.
 
@@ -114,6 +116,6 @@ npm run infra:logs
 npm run infra:down
 ```
 
-A P2P e2e tesztek valódi Chromium-kontextusok között futnak, saját 5273/5274/8100/3101 portokon. A relay külön kötelező CI-job; a sima e2e-ben való kihagyása nem relay-minősítés. A relay suite saját coturnt indít a 3488-as porton, hitelesített REST credentialökkel. Linux Docker Engine kell hozzá, vagy natív `TURNSERVER_BIN`. Külső elérhetetlenség hibát eredményez, nem hamis sikert. A tesztek saját folyamataikat leállítják.
+A P2P e2e tesztek valódi Chromium-kontextusok között futnak, saját 5273/8100/3101 portokon. A relay külön kötelező CI-job; a sima e2e-ben való kihagyása nem relay-minősítés. A relay suite saját coturnt indít a 3488-as porton, hitelesített REST credentialökkel. Linux Docker Engine kell hozzá, vagy natív `TURNSERVER_BIN`. Külső elérhetetlenség hibát eredményez, nem hamis sikert. A tesztek saját folyamataikat leállítják.
 
 A pontos futtatási eredmények, verziók és környezeti korlátok a [megvalósítási jegyzőkönyvben](docs/implementation.md), a részletes követelmények a [specifikációban](docs/specification.md) találhatók. A lockfile és a Docker image-ek rögzítettek; tranzitív `ip` függőséghez jelenleg upstream audit-jelzés tartozik, részletek a jegyzőkönyvben.

@@ -2,7 +2,9 @@
 
 ## Viewer-architektúra
 
-A HPPT alkalmazás nyitott ablakában fut a WebTorrent/WebRTC engine. Minden csomag külön originen és külön böngészőlapon jelenik meg: fejlesztésben `http://<infoHash>.hppt.localhost:5174/<path>`, a vezérlő címe `http://app.hppt.localhost:5173`.
+A HPPT alkalmazás nyitott ablakában fut a WebTorrent/WebRTC engine. Minden csomag külön originen és külön böngészőlapon jelenik meg: fejlesztésben `http://<infoHash>.hppt.localhost:5173/<path>`, a vezérlő címe `http://app.hppt.localhost:5173`.
+
+A két frontend buildet egyetlen Vite preview folyamat, ugyanazon a porton szolgálja ki hosztnév szerint. A vezérlő és a viewer külön Service Workert és precache-listát tart meg. Az alkalmazás és a viewer konfigurált originje eltérő hosztnevű, azonos sémájú és portú legyen. A viewer hoston a generált precache-lista engedélyezi a bootstrapfájlokat, vezérlő SPA-fallback nincs.
 
 Az oldal Service Workere az eredeti HTML/CSS/JS/kép fájlokat cache-ből vagy dedikált MessagePorton az alkalmazástól olvassa, teljes integritásellenőrzés után `Response`-ként adja vissza. A böngésző natívan kezeli az oldalt. A vezérlő rejtett, oldalankénti helper iframe-je a workerrel való kapcsolatot tartja fenn; a tartalom nincs iframe-be ágyazva. A helper és a top-level oldal azonos tárhelypartíciójához a külön originek azonos schemeful site-on legyenek.
 
@@ -34,7 +36,7 @@ Használj npm workspaces monorepót, TypeScript strict módot, ESM-et, Vite-ot, 
 ```text
 apps/
   web/                  # vezérlő UI + WebTorrent engine, app.hppt.localhost:5173
-  viewer/               # oldalankénti viewer host, <hash>.hppt.localhost:5174
+  viewer/               # oldalankénti viewer host, <hash>.hppt.localhost:5173
   tracker/              # bittorrent-tracker WebSocket szerver, :8000
   ice-api/              # ICE konfiguráció / rövid életű TURN credential, :3001
 packages/
@@ -219,7 +221,7 @@ A `dev` indítsa a web UI-t és viewer hostot párhuzamosan, kezelje a leállít
 
 ```text
 Web UI:      http://app.hppt.localhost:5173
-Viewer host: http://hppt.localhost:5174
+Viewer host: http://hppt.localhost:5173
 Tracker:     ws://localhost:8000
 ICE API:     http://localhost:3001
 ```
@@ -232,7 +234,7 @@ A böngészőnek elérhető hostneveket add át; a Compose belső `tracker`, `ic
 
 ```dotenv
 APP_ORIGIN=http://app.hppt.localhost:5173
-VIEWER_ORIGIN=http://hppt.localhost:5174
+VIEWER_ORIGIN=http://hppt.localhost:5173
 TRACKER_URL=ws://localhost:8000
 ICE_API_URL=http://localhost:3001/ice
 TURN_HOST=127.0.0.1

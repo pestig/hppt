@@ -7,7 +7,7 @@ import { createConnection } from 'node:net';
 import { resolve } from 'node:path';
 import { expect, type Page, type Browser, type BrowserContext } from '@playwright/test';
 export const APP = 'http://app.hppt.localhost:5273';
-export const VIEWER = 'http://hppt.localhost:5274';
+export const VIEWER = 'http://hppt.localhost:5273';
 export const buildDirectories = { web: resolve('apps/web/dist'), viewer: resolve('apps/viewer/dist') };
 const viewers = new WeakMap<Page, Page>();
 export function trackViewers(page: Page) { page.on('popup', popup => viewers.set(page, popup)); }
@@ -45,8 +45,7 @@ export async function start() {
   if (process.env.RELAY_TEST) await startTurn();
   launch('tracker', ['apps/tracker/main.ts'], { PORT: '8100' });
   launch('ice', ['apps/ice-api/main.ts'], { PORT: '3101' });
-  launch('web', ['node_modules/vite/bin/vite.js', 'preview', '--config', 'apps/web/vite.config.ts', '--outDir', buildDirectories.web]);
-  launch('viewer', ['node_modules/vite/bin/vite.js', 'preview', '--config', 'apps/viewer/vite.config.ts', '--outDir', buildDirectories.viewer]);
+  launch('web', ['node_modules/vite/bin/vite.js', 'preview', '--config', 'apps/web/vite.config.ts', '--outDir', buildDirectories.web], { VIEWER_DIST: buildDirectories.viewer });
   for (const url of [APP, VIEWER + '/__hppt/', 'http://localhost:3101/health', 'http://localhost:8100/stats.json']) await expect.poll(async () => {
     try { const local = new URL(url); const host = local.host; local.hostname = '127.0.0.1'; return (await fetch(local, { headers: { Host: host } })).status; } catch { return 0; }
   }, { timeout: 15000 }).toBe(200);

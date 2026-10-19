@@ -6,7 +6,7 @@ test.beforeAll(start); test.afterAll(() => stop());
 
 test('browser storage partitioning is enabled in the test environment', async ({ browser }) => {
   const a = await fresh(browser);
-  const thirdParty = 'http://localhost:5274/__hppt/';
+  const thirdParty = 'http://localhost:5273/__hppt/';
   await a.page.evaluate(url => { const iframe = document.createElement('iframe'); iframe.src = url; iframe.id = 'partition-probe'; document.body.append(iframe); }, thirdParty);
   await expect(a.page.frameLocator('#partition-probe').locator('#status')).toContainText('HPPT');
   const helper = a.page.frames().find(f => f.url() === thirdParty)!;

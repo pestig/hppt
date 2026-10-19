@@ -2,10 +2,30 @@ import { test, expect, chromium } from '@playwright/test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { APP, ready, publish, start, stop, open, content, trackViewers } from './helpers';
+import { APP, VIEWER, ready, publish, start, stop, open, content, trackViewers } from './helpers';
 import { browserOptions } from '../browser-options';
 test.beforeAll(start); test.afterAll(() => stop());
 test.beforeEach(({ page }) => { trackViewers(page); });
+test('one frontend port selects isolated controller and viewer builds by hostname', async ({ request }) => {
+  expect(new URL(APP).port).toBe(new URL(VIEWER).port);
+  expect(new URL(APP).hostname).not.toBe(new URL(VIEWER).hostname);
+  const server = APP.replace(new URL(APP).hostname, '127.0.0.1');
+  const get = (host: string, path: string) => request.get(server + path, { headers: { Host: new URL(host).host }, maxRedirects: 0 });
+  const ui = await get(APP, '/index.html'), viewer = await get(VIEWER, '/__hppt/index.html');
+  expect(ui.status()).toBe(200); expect(await ui.text()).toContain('Web a társaktól');
+  expect(viewer.status()).toBe(200); expect(await viewer.text()).toContain('HPPT fájlkiszolgáló');
+  expect(viewer.headers()['content-security-policy']).toContain(`frame-ancestors ${APP}`);
+  expect(viewer.headers()['origin-agent-cluster']).toBe('?1');
+  const worker = await get(VIEWER, '/__hppt/sw.js');
+  expect(worker.status()).toBe(200); expect(worker.headers()['content-type']).toContain('javascript');
+  expect(worker.headers()['service-worker-allowed']).toBe('/');
+  expect((await get(VIEWER, '/sw.js')).status()).toBe(503);
+  expect((await get(VIEWER, '/runtime-config.json')).status()).toBe(503);
+  expect((await get(VIEWER, '/__hppt/unknown.js')).status()).toBe(404);
+  expect((await get(VIEWER, '/__hppt/%252e%252e/.env')).status()).toBe(404);
+  expect((await get(APP, '/__hppt/sw.js')).status()).toBe(404);
+  expect((await get('http://unknown.hppt.localhost:5273', '/')).status()).toBe(421);
+});
 test('loopback alias redirects to the configured origin before publishing and opening a site', async ({ page }) => {
   const iceOrigins: Promise<string | undefined>[] = [];
   page.on('request', request => {

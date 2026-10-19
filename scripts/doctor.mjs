@@ -3,15 +3,17 @@ import { existsSync } from 'node:fs';
 import { normalizeAppOrigin, normalizeViewerOrigin } from './origins.ts';
 if (existsSync('.env')) process.loadEnvFile('.env');
 const env = process.env;
+const appOrigin = normalizeAppOrigin(env.APP_ORIGIN), viewerOrigin = normalizeViewerOrigin(env.VIEWER_ORIGIN, appOrigin);
 let failed = false;
 async function check(label, task) { try { await task(); console.log(`OK    ${label}`); } catch (error) { failed = true; console.error(`FAIL  ${label}: ${error.message}`); } }
 await check('Node 24', async () => { if (Number(process.versions.node.split('.')[0]) !== 24) throw new Error(process.versions.node); });
-for (const [label, value] of [['Web UI', normalizeAppOrigin(env.APP_ORIGIN)], ['Viewer', normalizeViewerOrigin(env.VIEWER_ORIGIN) + '/__hppt/']]) await check(label, async () => {
+for (const [label, value] of [['Web UI', appOrigin], ['Viewer', viewerOrigin + '/__hppt/']]) await check(label, async () => {
   const url = new URL(value), host = url.host;
   if (url.hostname.endsWith('.localhost')) url.hostname = '127.0.0.1';
   const r = await fetch(url, { headers: { Host: host }, signal: AbortSignal.timeout(4000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`);
 });
-await check('Origin isolation', async () => { if (normalizeAppOrigin(env.APP_ORIGIN) === normalizeViewerOrigin(env.VIEWER_ORIGIN)) throw new Error('Origins must differ'); });
+await check('Origin isolation', async () => { if (appOrigin === viewerOrigin) throw new Error('Origins must differ'); });
+await check('Shared frontend port', async () => { if (new URL(appOrigin).port !== new URL(viewerOrigin).port || new URL(appOrigin).protocol !== new URL(viewerOrigin).protocol) throw new Error('Frontend origins must share a scheme and port'); });
 await check('ICE API', async () => {
   const response = await fetch(env.ICE_API_URL || 'http://localhost:3001/ice', { headers: { Origin: normalizeAppOrigin(env.APP_ORIGIN) }, signal: AbortSignal.timeout(4000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}${response.status === 401 ? ' (production gateway authentication required)' : ''}`);

@@ -2,11 +2,12 @@
 
 Az oldalankénti originre és külön böngészőablakokra épülő HPPT viewer megvalósult; az eredeti fájlokat a saját Service Worker szolgálja ki. A végső regresszióellenőrzések eredménye alább szerepel. Dátum: 2026-10-19. Publikus production telepítés és távoli CI-futtatás nem történt.
 
+A frontend-kiszolgálás egyetlen Vite preview folyamatra és az 5173-as portra került. A két célzott build megmaradt; hosztnév szerinti routing választja ki a vezérlőt vagy a csak engedélyezett bootstrapfájlokat kiszolgáló viewer handlert. A régi helyi viewer-portot a konfiguráció az alkalmazás portjára igazítja. A UI originje és IndexedDB-je megmarad, a viewer új originjének offline cache-ét a könyvtárfrissítés készíti elő.
 ## Ellenőrzött működés
 
 Valódi WebRTC adatátvitel működik két elkülönített Chromium-profil között; az eredeti publikáló bezárása után tiszta harmadik profil B-től tölt le. A pinelt csomag újratöltés után valóban újra seedel, újraépített darabtárral és infoHash-ellenőrzéssel. A HTTP-hostok nem szolgálják ki a fixture payloadot.
 
-Minden csomag külön `<infoHash>.hppt.localhost:5174` originen, önálló böngészőlapon fut. A saját worker változatlan fájlbytes tartalmat ad vissza, a böngésző natívan tölti be a relatív erőforrásokat. A WebRTC a nyitott HPPT alkalmazásban marad; rejtett, oldalankénti helper és dedikált MessagePort köti össze a workerrel. Megjelenítő iframe, HTML/CSS-átírás és data URL-es csomagolás nincs. A tartalom saját originjének storage-át használhatja. A CSP külső erőforrást, workert, frame-et és űrlapot tilt; a COOP leválasztja az opener kapcsolatot, az Origin-Agent-Cluster megakadályozza a document.domain alapú összevonást.
+Minden csomag külön `<infoHash>.hppt.localhost:5173` originen, önálló böngészőlapon fut. A saját worker változatlan fájlbytes tartalmat ad vissza, a böngésző natívan tölti be a relatív erőforrásokat. A WebRTC a nyitott HPPT alkalmazásban marad; rejtett, oldalankénti helper és dedikált MessagePort köti össze a workerrel. Megjelenítő iframe, HTML/CSS-átírás és data URL-es csomagolás nincs. A tartalom saját originjének storage-át használhatja. A CSP külső erőforrást, workert, frame-et és űrlapot tilt; a COOP leválasztja az opener kapcsolatot, az Origin-Agent-Cluster megakadályozza a document.domain alapú összevonást.
 
 A protokollkezelő `/open?uri=…` belépési lapja saját magát navigálja a viewer-címre. A launcher külön betöltött modul; helyi csomaghoz nem példányosít P2P engine-t, SHA-256- és torrentbizonyíték-ellenőrzéssel előkészíti a teljes tartós viewer-cache-t. Letöltéskor az alkalmazás originjén futó BroadcastChannelen kér előkészítést egy már nyitott vezérlőtől, vagy külön alkalmazáslapot indít. Blokkolt ablaknyitásnál kézzel kattintható indítógomb jelenik meg. A válasz azonosított kéréshez és kiválasztott vezérlőhöz kötött; a launcher ellenőrzi a hash-t, az explicit útvonalat, queryt és fragmentet, és csak a konfigurált viewer origint állítja elő. A vezérlő UI hagyományos megnyitógombja továbbra is külön viewer-lapot nyit.
 
@@ -14,7 +15,7 @@ A közvetlen viewer-link első megnyitása friss profilban navigációs 302-vel 
 
 Működik a nem `index.html` kezdőoldal, a relatív CSS/kép/script, a CSS import és háttérkép, a relatív aloldal, az ES-modul és import, a body/html attribútumok, a valós window.location és az ugyanazon originre mutató fetch. A query és fragment a viewer valódi URL-jében marad meg. Explicit hiányzó útvonalra 404 jár. Sok erőforrás betöltése legfeljebb hat egyidejű olvasással történik, a bridge 32-es pending korlátja alatt.
 
-A UI saját SW-je és a viewer saját SW-je is cache-eli az indításhoz szükséges fájlokat. Az offline teszt nem csupán hálózatot kapcsol: bezárja az egész tartós Chromium-profilt, leállítja mind a négy alkalmazásszervert, megnyitja ugyanazt a megőrzött profilt, letiltja a hálózatot és újranyitja az alkalmazás címét. Először közvetlenül a csomag saját címét nyitja meg, vezérlőablak nélkül: a HTML/CSS/kép/JS/aloldal működik. Utána a belépési link ugyanazon lapon történő átirányítását, végül a UI-ból történő offline megnyitást is ellenőrzi. Nincs tracker-, ICE API- vagy hitelesítésvárakozás a helyi tartalom előtt. A viewer shell előkészítése az „Offline elérhető” állapot előfeltétele.
+A UI saját SW-je és a viewer saját SW-je is cache-eli az indításhoz szükséges fájlokat. Az offline teszt nem csupán hálózatot kapcsol: bezárja az egész tartós Chromium-profilt, leállítja mindhárom alkalmazásszervert, megnyitja ugyanazt a megőrzött profilt, letiltja a hálózatot és újranyitja az alkalmazás címét. Először közvetlenül a csomag saját címét nyitja meg, vezérlőablak nélkül: a HTML/CSS/kép/JS/aloldal működik. Utána a belépési link ugyanazon lapon történő átirányítását, végül a UI-ból történő offline megnyitást is ellenőrzi. Nincs tracker-, ICE API- vagy hitelesítésvárakozás a helyi tartalom előtt. A viewer shell előkészítése az „Offline elérhető” állapot előfeltétele.
 
 Cache-törléskor a vezérlő tartós példánya és az adott csomag originjének fájljai/bizonyítéka törlődik; a bootstrap cache megmarad. A sérült fájl nem renderelődik. A manifestet az eredeti torrent infoHash-hez és a manifestet tartalmazó torrentdarabokhoz kötött bizonyíték hitelesíti. A site saját Cache Storage-ából származó hamisított fájl és újraindulás után a hamisított manifestbizonyíték is elutasításra kerül. UI- és viewer-kvótahiba nem eredményez offline állapotot; a viewer tartós fájljait könyvtárfrissítéskor újra ellenőrizzük. Az alkalmazás bridge-ének leválasztása megszakítja a pending olvasást. Worker-újraindulás után egy hiányzó fájl ismét a nyitott alkalmazástól kérhető.
 
@@ -25,15 +26,17 @@ Cache-törléskor a vezérlő tartós példánya és az adott csomag originjéne
 | `npm ci` | Sikeres, lockfile alapján |
 | `npm run lint` | Sikeres |
 | `npm run typecheck` | Sikeres, strict TypeScript |
-| `npm run test:unit` | 29 sikeres protokoll-, torrentbizonyíték-, origin-, bridge- és valódi ICE API-teszt |
+| `npm run test:unit` | 32 sikeres protokoll-, torrentbizonyíték-, origin-, bridge- és valódi ICE API-teszt |
 | `npm run build` | Mindkét alkalmazás sikeresen buildel |
-| `npm run test:e2e` | 35 sikeres; 4 relay eset külön jobban, 0 hibás; kilépési kód 0 |
-| `npm run test:relay` | Korábbi viewer-átalakításkor 4 sikeres, saját coturnnal és valódi WebRTC-vel; a protokollkezelő-változtatáskor nem ismételve |
+| `npm run test:e2e` | 36 sikeres; 4 relay eset külön jobban, 0 hibás a végső futásban; kilépési kód 0 |
+| `npm run test:relay` | Korábbi viewer-átalakításkor 4 sikeres, saját coturnnal és valódi WebRTC-vel; a protokollkezelő- és egyportos frontend-változtatáskor nem ismételve |
 | Docker tracker / ICE API | A meglévő tracker működik; az új origin-normalizáló modullal az ICE API újraépítése és indítása sikeres |
 | `setup:dev`, `infra:up`, `infra:logs`, `infra:down` | Sikeres; az ismételt setup megőrizte a meglévő konfigurációt és credentialt |
-| `npm run doctor` | Node 24, mindkét HTTP-origin, origin-elkülönítés, ICE API és tracker WS sikeres |
+| `npm run doctor` | Node 24, mindkét HTTP-origin, közös frontend-port, origin-elkülönítés, ICE API és tracker WS sikeres |
 
-A teljes normál e2e suite 35 esetet futtat, köztük nyolc protokoll- és közvetlen viewer-belépési tesztet: helyi csomag vezérlő és hálózati kliens nélkül, élő vezérlő újrahasználata valódi P2P-letöltéssel, blokkolt ablaknyitás kézi indítása, automatikus vezérlőindítás, hibás cím és explicit hiányzó fájl, valamint közvetlen viewer-link friss profilban, gyökérútvonal és közvetlen hiányzó fájl. A tényleges 5173/5174 portokon a `fixtures/sample-site` publikálása és külön profilból közvetlen megnyitása is sikeres volt; a HTML/CSS/JS működött, az eredeti URL megmaradt, az alkalmazás és a viewer két külön lapon maradt. A 4 relay eset külön jobba tartozik. A relay kihagyása a normál suite-ban nem relay-minősítés. A relay saját szervert indít és tényleges átvitel hiányakor hibázik; hiányzó környezetből nem lesz hamis siker.
+A teljes normál e2e suite 36 esetet futtat, köztük a közös port hosztnév szerinti routingját és nyolc protokoll- és közvetlen viewer-belépési tesztet: helyi csomag vezérlő és hálózati kliens nélkül, élő vezérlő újrahasználata valódi P2P-letöltéssel, blokkolt ablaknyitás kézi indítása, automatikus vezérlőindítás, hibás cím és explicit hiányzó fájl, valamint közvetlen viewer-link friss profilban, gyökérútvonal és közvetlen hiányzó fájl. A tényleges 5173-as frontend-porton a `fixtures/sample-site` publikálása és külön profilból közvetlen megnyitása is sikeres volt; a HTML/CSS/JS működött, az eredeti URL megmaradt, az alkalmazás és a viewer két külön lapon maradt. Nem történt 5174-es kérés, és azon a porton nem maradt listener. A 4 relay eset külön jobba tartozik. A relay kihagyása a normál suite-ban nem relay-minősítés. A relay saját szervert indít és tényleges átvitel hiányakor hibázik; hiányzó környezetből nem lesz hamis siker.
+
+Az egyportos változtatás első teljes futásában a seederhiány utáni P2P-újrapróbálás egyszer kapcsolati időtúllépést kapott. Ugyanaz az eset két külön ismétlésben, majd a végső teljes futásban is sikeres volt. A transport kódját és a timeout elvárását nem módosítottuk.
 
 A relay tesztek feltételei:
 
@@ -44,7 +47,7 @@ A relay tesztek feltételei:
 
 A credentialteszt valós coturn REST authot használ. A rövid TTL és a hibás credential kizárólag tesztfixture: a production ellenőrzés nincs kikapcsolva. A hitelesítő gatewayt a böngészős tesztek hálózati fixture-je modellezi, az ICE API production hitelesítését és HMAC-képzését valódi API-kérések ellenőrzik. Többórás TURN allocation-élettartamot, éles TLS-t és globális internetes NAT-topológiákat ez nem minősít.
 
-A böngészős tesztek saját portjai: UI 5273, viewer 5274, tracker 8100, ICE API 3101. A relay TURN listener 3488, a relay UDP-tartomány 49500–49620. Minden teszthez véges timeout tartozik, a saját folyamatok és ideiglenes credentialfájlok takarítása megtörténik. A Playwright trace kikapcsolt, mert a hálózati választestek TURN credentialt is rögzítenének.
+A böngészős tesztek saját portjai: frontend 5273 (UI és viewer), tracker 8100, ICE API 3101. A relay TURN listener 3488, a relay UDP-tartomány 49500–49620. Minden teszthez véges timeout tartozik, a saját folyamatok és ideiglenes credentialfájlok takarítása megtörténik. A Playwright trace kikapcsolt, mert a hálózati választestek TURN credentialt is rögzítenének.
 
 ## Környezet és reprodukálás
 

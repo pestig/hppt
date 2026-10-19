@@ -40,8 +40,8 @@ it('rejects forged metadata, changed piece bytes, wrong origins and missing piec
 });
 it('maps each content hash to a different origin and keeps real paths, query and fragment', () => {
   const hash = 'a'.repeat(40);
-  expect(siteOrigin('http://localhost:5174', hash)).toBe(`http://${hash}.hppt.localhost:5174`);
+  expect(siteOrigin('http://localhost:5173', hash)).toBe(`http://${hash}.hppt.localhost:5173`);
   expect(siteOrigin('https://sites.example.com', hash)).toBe(`https://${hash}.sites.example.com`);
-  expect(siteURL('http://localhost:5174', hash, 'pages/home.html', '?x=1', '#hello')).toBe(`http://${hash}.hppt.localhost:5174/pages/home.html?x=1#hello`);
-  expect(() => siteURL('http://localhost:5174', hash, '../other.html')).toThrow();
+  expect(siteURL('http://localhost:5173', hash, 'pages/home.html', '?x=1', '#hello')).toBe(`http://${hash}.hppt.localhost:5173/pages/home.html?x=1#hello`);
+  expect(() => siteURL('http://localhost:5173', hash, '../other.html')).toThrow();
 });

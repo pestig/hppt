@@ -11,7 +11,8 @@ let text;
 try { text = await readFile('.env', 'utf8'); }
 catch (e) { if (e.code !== 'ENOENT') throw e; text = await readFile('.env.example', 'utf8'); }
 let env = parseEnv(text);
-for (const [key, value] of [['APP_ORIGIN', normalizeAppOrigin(env.APP_ORIGIN)], ['VIEWER_ORIGIN', normalizeViewerOrigin(env.VIEWER_ORIGIN)]]) {
+const appOrigin = normalizeAppOrigin(env.APP_ORIGIN);
+for (const [key, value] of [['APP_ORIGIN', appOrigin], ['VIEWER_ORIGIN', normalizeViewerOrigin(env.VIEWER_ORIGIN, appOrigin)]]) {
   if (env[key]) text = text.replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${value}`);
   else text += `\n${key}=${value}\n`;
 }
