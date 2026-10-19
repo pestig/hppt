@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { normalizeAppOrigin, normalizeViewerOrigin } from './origins.ts';
 if (existsSync('.env')) process.loadEnvFile('.env');
 const children = [];
 const production = process.argv.includes('--production');
@@ -22,7 +23,7 @@ if (services) {
   }
   for (const app of ['web', 'viewer']) run(['node_modules/vite/bin/vite.js', 'preview', '--config', `apps/${app}/vite.config.ts`]);
 }
-console.log('Web UI:      ' + (process.env.APP_ORIGIN || 'http://localhost:5173'));
-console.log('Viewer host: ' + (process.env.VIEWER_ORIGIN || 'http://localhost:5174'));
+console.log('Web UI:      ' + normalizeAppOrigin(process.env.APP_ORIGIN));
+console.log('Viewer host: ' + normalizeViewerOrigin(process.env.VIEWER_ORIGIN));
 console.log('Tracker:     ' + (process.env.TRACKER_URL || 'ws://localhost:8000'));
 console.log('ICE API:     ' + (process.env.ICE_API_URL || 'http://localhost:3001/ice'));

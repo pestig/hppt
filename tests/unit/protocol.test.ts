@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { contentURL, makeManifest, mapTorrentFiles, parseAddress, validateManifest, verify, urlPath, DEFAULT_LIMITS } from '@htppt/protocol';
+import { makeManifest, mapTorrentFiles, parseAddress, validateManifest, verify, urlPath, DEFAULT_LIMITS } from '@htppt/protocol';
+import { siteURL } from '@htppt/protocol/site';
 const hash = 'a'.repeat(40);
 describe('URI and path validation', () => {
   it('accepts previously shared addresses with the same path validation', () => {
@@ -9,7 +10,7 @@ describe('URI and path validation', () => {
   it('resolves omitted and root paths through the manifest, preserving query and fragment', () => {
     for (const suffix of ['', '/']) expect(parseAddress(`web+hppt://${hash}${suffix}`).path).toBeNull();
     const uri = parseAddress(`web+hppt://${hash}?mode=1#hello`);
-    expect(contentURL('https://viewer.example', uri, 'pages/home.html')).toBe(`https://viewer.example/content/${hash}/pages/home.html?mode=1#hello`);
+    expect(siteURL('https://viewer.example', uri.hash, uri.path ?? 'pages/home.html', uri.query, uri.fragment)).toBe(`https://${hash}.viewer.example/pages/home.html?mode=1#hello`);
     expect(parseAddress(`web+hppt://${hash}/about.html`).path).toBe('about.html');
   });
   it.each(['/../secret', '/a/../b', '/%2e%2e/private', '/a%2fb', '/a%5cb', '/%252e%252e/private', '/%00', '/a\\b', '//b', '/./a', '/bad%ZZ'])('rejects unsafe raw path %s', path => {
@@ -44,6 +45,7 @@ describe('manifest, integrity and torrent boundary', () => {
     expect(() => validateManifest(manifest, { ...DEFAULT_LIMITS, total: 1 })).toThrow('size');
     expect(() => validateManifest(manifest, { ...DEFAULT_LIMITS, files: 1 })).toThrow('count');
     await expect(makeManifest([{ path: 'htppt-manifest.json', bytes: new Uint8Array() }], 'home.html')).rejects.toThrow('reserved');
+    await expect(makeManifest([...files, { path: '__hppt/worker.js', bytes: new Uint8Array() }], 'pages/home.html')).rejects.toThrow('reserved');
   });
   it('maps the torrent root once and checks every size and path', async () => {
     const manifest = await makeManifest(files, 'pages/home.html');

@@ -1,8 +1,8 @@
 declare const __BUILD__: string;
 export const SHELL = `htppt-shell-${__BUILD__}`;
-export function installShell(sw: any, refreshOnUpdate = false) {
+export function installShell(sw: any, refreshOnUpdate = false, base = '/') {
   sw.addEventListener('install', (event: any) => event.waitUntil((async () => {
-    const response = await fetch('/precache.json', { cache: 'no-store' });
+    const response = await fetch(`${base}precache.json`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Shell precache unavailable: run npm run build and npm run serve');
     const files = await response.json();
     const cache = await caches.open(SHELL);
@@ -23,11 +23,11 @@ export function installShell(sw: any, refreshOnUpdate = false) {
     }
   })()));
 }
-export async function shellResponse(request: Request) {
+export async function shellResponse(request: Request, base = '/') {
   const cache = await caches.open(SHELL);
   if (request.mode === 'navigate') {
     const path = new URL(request.url).pathname;
-    if (['/', '/index.html', '/open'].includes(path)) return await cache.match('/index.html');
+    if ((base === '/' ? ['/', '/index.html', '/open'] : [base, `${base}index.html`]).includes(path)) return await cache.match(`${base}index.html`);
   }
   return await cache.match(request.url, { ignoreSearch: true });
 }

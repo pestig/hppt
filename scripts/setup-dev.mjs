@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { parseEnv } from 'node:util';
+import { normalizeAppOrigin, normalizeViewerOrigin } from './origins.ts';
 const args = process.argv.slice(2);
 const flag = args.indexOf('--turn-host');
 const host = flag < 0 ? undefined : args[flag + 1];
@@ -10,6 +11,10 @@ let text;
 try { text = await readFile('.env', 'utf8'); }
 catch (e) { if (e.code !== 'ENOENT') throw e; text = await readFile('.env.example', 'utf8'); }
 let env = parseEnv(text);
+for (const [key, value] of [['APP_ORIGIN', normalizeAppOrigin(env.APP_ORIGIN)], ['VIEWER_ORIGIN', normalizeViewerOrigin(env.VIEWER_ORIGIN)]]) {
+  if (env[key]) text = text.replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${value}`);
+  else text += `\n${key}=${value}\n`;
+}
 const additions = { TURN_USERNAME: 'htppt-dev', TURN_PASSWORD: randomBytes(24).toString('hex'), LOCAL_UID: String(process.getuid?.() ?? 1000), LOCAL_GID: String(process.getgid?.() ?? 1000) };
 for (const [key, value] of Object.entries(additions)) if (!env[key]) text += `\n${key}=${value}\n`;
 if (host) text = text.replace(/^TURN_HOST=.*$/m, `TURN_HOST=${host}`);

@@ -8,7 +8,7 @@ try {
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', e => console.error('PAGE:', e.message));
     page.on('console', m => { if (m.type() === 'error') console.error('BROWSER:', m.text()); });
-    await page.goto('http://localhost:5173');
+    await page.goto('http://app.hppt.localhost:5173');
     await page.waitForFunction(() => window.htppt && navigator.serviceWorker.controller);
     await page.evaluate(relay => { window.htppt.config.policy = relay ? 'relay' : 'all'; }, process.argv.includes('--relay'));
   }

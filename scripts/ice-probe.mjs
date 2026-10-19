@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test';
 const browser = await chromium.launch();
 try {
-  const page = await browser.newPage(); await page.goto('http://localhost:5173');
+  const page = await browser.newPage(); await page.goto('http://app.hppt.localhost:5173');
   const result = await page.evaluate(async () => {
     const ice = await fetch('http://localhost:3001/ice').then(r => r.json());
     const pc = new RTCPeerConnection({ iceServers: ice.iceServers, iceTransportPolicy: 'relay' });

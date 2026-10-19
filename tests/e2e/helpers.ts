@@ -6,9 +6,11 @@ import { tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { resolve } from 'node:path';
 import { expect, type Page, type Browser, type BrowserContext } from '@playwright/test';
-export const APP = 'http://localhost:5273';
-export const VIEWER = 'http://localhost:5274';
-export const buildDirectories = { web: resolve('apps/web/dist') };
+export const APP = 'http://app.hppt.localhost:5273';
+export const VIEWER = 'http://hppt.localhost:5274';
+export const buildDirectories = { web: resolve('apps/web/dist'), viewer: resolve('apps/viewer/dist') };
+const viewers = new WeakMap<Page, Page>();
+export function trackViewers(page: Page) { page.on('popup', popup => viewers.set(page, popup)); }
 export const turnSecret = randomBytes(32).toString('hex');
 export const gatewayHeaders = { 'x-authenticated-user': 'browser-fixture', 'x-htppt-gateway-token': randomBytes(32).toString('hex') };
 export const env = { ...process.env, APP_ORIGIN: APP, VIEWER_ORIGIN: VIEWER, TRACKER_URL: 'ws://localhost:8100', ICE_API_URL: 'http://localhost:3101/ice', ICE_TRANSPORT_POLICY: process.env.RELAY_TEST ? 'relay' : 'all', NODE_ENV: process.env.RELAY_TEST ? 'production' : 'development', ...(process.env.RELAY_TEST ? { TURN_HOST: '127.0.0.1', TURN_PORT: '3488', TURN_SECRET: turnSecret, AUTH_PROXY_TOKEN: gatewayHeaders['x-htppt-gateway-token'] } : {}) };
@@ -44,8 +46,10 @@ export async function start() {
   launch('tracker', ['apps/tracker/main.ts'], { PORT: '8100' });
   launch('ice', ['apps/ice-api/main.ts'], { PORT: '3101' });
   launch('web', ['node_modules/vite/bin/vite.js', 'preview', '--config', 'apps/web/vite.config.ts', '--outDir', buildDirectories.web]);
-  launch('viewer', ['node_modules/vite/bin/vite.js', 'preview', '--config', 'apps/viewer/vite.config.ts']);
-  for (const url of [APP, VIEWER, 'http://localhost:3101/health', 'http://localhost:8100/stats.json']) await expect.poll(async () => { try { return (await fetch(url)).status; } catch { return 0; } }, { timeout: 15000 }).toBe(200);
+  launch('viewer', ['node_modules/vite/bin/vite.js', 'preview', '--config', 'apps/viewer/vite.config.ts', '--outDir', buildDirectories.viewer]);
+  for (const url of [APP, VIEWER + '/__hppt/', 'http://localhost:3101/health', 'http://localhost:8100/stats.json']) await expect.poll(async () => {
+    try { const local = new URL(url); const host = local.host; local.hostname = '127.0.0.1'; return (await fetch(local, { headers: { Host: host } })).status; } catch { return 0; }
+  }, { timeout: 15000 }).toBe(200);
 }
 export async function stop(name?: string) {
   for (const [id, child] of [...processes]) {
@@ -57,6 +61,7 @@ export async function stop(name?: string) {
   if (!name && turnFolder) { await rm(turnFolder, { recursive: true, force: true }); turnFolder = undefined; }
 }
 export async function ready(page: Page) {
+  trackViewers(page);
   await page.goto(APP);
   await page.waitForFunction(() => (window as any).htppt && navigator.serviceWorker.controller);
 }
@@ -76,6 +81,15 @@ export async function fixture(name = 'hello-site') {
 export async function publish(page: Page, name = 'hello-site', entrypoint = 'index.html') {
   return page.evaluate(async ({ files, entrypoint }) => (window as any).htppt.engine.publish(files.map(f => ({ ...f, bytes: new Uint8Array(f.bytes) })), { entrypoint }), { files: await fixture(name), entrypoint });
 }
-export async function open(page: Page, hash: string, suffix = '') { await page.evaluate(uri => (window as any).htppt.open(uri), `web+hppt://${hash}${suffix}`); }
+export async function open(page: Page, hash: string, suffix = '') {
+  trackViewers(page);
+  const popup = page.waitForEvent('popup');
+  await page.evaluate(uri => (window as any).htppt.open(uri), `web+hppt://${hash}${suffix}`);
+  viewers.set(page, await popup);
+}
 export async function pin(page: Page, hash: string) { await page.evaluate(hash => (window as any).htppt.engine.pin(hash), hash); }
-export function content(page: Page) { return page.frameLocator('#viewer > iframe').frameLocator('iframe'); }
+export function content(page: Page): Page {
+  const viewer = viewers.get(page) || [...page.context().pages()].reverse().find(p => /^[a-f0-9]{40}\./.test(new URL(p.url()).hostname));
+  if (!viewer) throw new Error('No separate viewer window was opened');
+  return viewer;
+}

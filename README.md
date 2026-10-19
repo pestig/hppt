@@ -15,14 +15,14 @@ npm run dev
 
 | Szolgáltatás | Cím |
 |---|---|
-| Vezérlő UI | http://localhost:5173 |
-| Külön originű viewer | http://localhost:5174 |
+| Vezérlő UI | http://app.hppt.localhost:5173 |
+| Külön originű viewer | http://hppt.localhost:5174 |
 | WebSocket tracker | ws://localhost:8000 |
 | ICE API | http://localhost:3001/ice |
 
-A vezérlő UI-t az `APP_ORIGIN` címén nyisd meg (alapból `http://localhost:5173`). A `127.0.0.1` és a `localhost` külön origin: a CORS, a viewer és a böngészős tárhely pontos címegyezést igényel. Más címen megnyitva a UI indításkor átirányít az `APP_ORIGIN` címre, megőrizve az útvonalat, queryt és fragmentet. Az offline mentések a konfigurált originhez tartoznak.
+A vezérlő UI-t az `APP_ORIGIN` címén nyisd meg (alapból `http://app.hppt.localhost:5173`). A `localhost:5173` és `127.0.0.1:5173` fejlesztői belépési címek az új címre irányítanak. A különböző hostnevek külön originek: a CORS, a viewer és a böngészős tárhely pontos címegyezést igényel. Más címen megnyitva a UI indításkor átirányít az `APP_ORIGIN` címre, megőrizve az útvonalat, queryt és fragmentet. Az offline mentések a konfigurált originhez tartoznak. Az új helyi origin nem látja automatikusan a korábbi `localhost:5173` könyvtárát; a régi adatokat nem töröljük, a mintamappa újrapublikálható. A régi localhost-alapértékeket a konfiguráció és az ICE API az új hostnevekre normalizálja.
 
-Új build telepítésekor a Service Worker előbb cache-eli az új indítófájlokat, majd egyszer újratölti a nyitott vezérlőfelületeket. A tartósan mentett csomagok megmaradnak. Ha egy régi verzió még beragadt, a `http://localhost:5173/refresh` cím a régi indítóoldal-cache megkerülésével tölti be a friss alkalmazást; tárhelytörlés nem szükséges.
+Új build telepítésekor a Service Worker előbb cache-eli az új indítófájlokat, majd egyszer újratölti a nyitott vezérlőfelületeket. A tartósan mentett csomagok megmaradnak. Ha egy régi verzió még beragadt, a `http://app.hppt.localhost:5173/refresh` cím a régi indítóoldal-cache megkerülésével tölti be a friss alkalmazást; tárhelytörlés nem szükséges.
 
 A `setup:dev` idempotens: megőrzi a credentialt, `.env`-et és helyi coturn-konfigurációt készít. Mindkettő gitignore-olt. A `dev` buildeli és párhuzamosan kiszolgálja a két alkalmazást a Service Worker precache-listáival; módosítás után újraindítandó. Kész buildhez `npm run serve` használható.
 
@@ -42,7 +42,7 @@ A `fixtures/sample-site` mappa egy kész, publikálható tesztoldal: helyi CSS, 
 
 1. Két elkülönített böngészőprofilban nyisd meg a vezérlő UI-t.
 2. A-ban válaszd a `fixtures/hello-site` mappát, és publikáld. A fájlok helyben kapnak manifestet és integritáshash-t.
-3. A kapott `web+hppt://…` címet illeszd B-be. Ellenőrizd a CSS-t, képet, JS-gombot és relatív aloldalt.
+3. A kapott `web+hppt://…` címet illeszd B-be. Az oldal külön böngészőlapon, saját originen nyílik meg. Ellenőrizd a CSS-t, képet, JS-gombot és relatív aloldalt. Ha a böngésző blokkolja az új lapot, használd az alkalmazásban megjelenő megnyitási linket.
 4. B-ben válaszd a „Mentés offline + pin” gombot. A teljes csomag letöltése, ellenőrzése és tartós tárolása után jelenik meg az „Offline elérhető” állapot.
 5. Zárd be A-t. Tiszta C profil B-től is le tudja tölteni a csomagot. B-t a továbbosztáshoz tartsd nyitva.
 6. B böngészőjét bezárva, majd ugyanazzal a megőrzött profillal, leállított szerverek és internet nélkül is megnyitható a korábban betöltött alkalmazás és a teljesen mentett oldal.
@@ -51,9 +51,13 @@ Az `index.html` nem kötelező. A `fixtures/nested-site` demónál válaszd a `p
 
 A protokollkezelő regisztrációja külön gombbal történik, támogatott böngészőben. Mindig használható a beillesztés és a belépési link. A hordozható böngészős séma `web+hppt://`, a natív `hppt://` nem része az MVP-nek.
 
+A protokollkezelő és az `/open?uri=…` belépési link ugyanazon a lapon navigál a saját viewer-címre, például `http://<hash>.hppt.localhost:5174/pages/home.html?mode=1#details`. Teljes helyi csomagnál ellenőrzi és előkészíti a tartós viewer-cache-t, majd átirányít; nem indít WebTorrent/WebRTC klienst vagy külön alkalmazáslapot. Letöltéshez az azonos böngészőprofilban már nyitott HPPT alkalmazást használja, ennek hiányában külön alkalmazáslapot indít. Ha a böngésző ezt blokkolja, a belépési oldalon megjelenik a „HPPT alkalmazás indítása” gomb. A letöltéshez és továbbosztáshoz az alkalmazáslap maradjon nyitva. Az alkalmazás beillesztőmezője és könyvtára továbbra is külön viewer-lapot nyit.
+
+A közvetlen `http://<hash>.hppt.localhost:5174/<path>` viewer-link friss, például inkognitó profilban is megnyitható. Ha ott még nincs az oldalhoz Service Worker, a viewer host a felső szintű oldalmegnyitást a belépési linkre irányítja; az előkészítés után ugyanaz a lap visszatér a viewer-címre, megőrizve a queryt és fragmentet. Az inkognitó saját HPPT alkalmazását használja, a normál profilban nyitott publikáló pedig peer marad: a letöltéshez azt is nyitva kell tartani. Közönséges fetch- és erőforráskérések továbbra sem kapnak csomagfájlt HTTP-n. Más statikus host/reverse proxy telepítésénél ezt a navigációs átirányítási szabályt is biztosítani kell.
+
 ## Offline működés és tárolás
 
-A UI és a viewer saját originjükön külön Service Workerrel cache-elik az indító HTML/JS/CSS fájlokat és a publikus konfigurációt. A UI előkészíti a viewer offline indítását is. Az offline jelöléshez a teljes csomag ellenőrzött, tartós példánya és az előkészített viewer szükséges. Offline induláskor a helyi megjelenítés nem vár trackerre, ICE API-ra vagy hitelesítésre.
+A UI és minden oldal saját originjén külön Service Worker cache-eli az indítófájlokat. A UI a saját tartós csomagpéldányán kívül az oldal originjén tárolt összes fájlt és torrentbizonyítékot is ellenőrzi az offline jelölés előtt. A teljesen mentett oldal a saját HTTP(S)-címén, bezárt HPPT alkalmazás mellett is újranyitható offline. A UI-ból történő offline megnyitás is működik; egyik út sem vár trackerre, ICE API-ra vagy hitelesítésre.
 
 A pinelt csomag online újraindításkor visszaállítható seedelésre; ehhez a darabtár újraépül, az SHA-256 ellenőrzés és az eredeti infoHash összevetése megtörténik. Az unpin kikapcsolja az automatikus reseedet, a törlés mindkét origin tartalomcache-ét üríti. A bootstrap cache megmarad.
 
@@ -61,17 +65,21 @@ Első használatkor hálózati hozzáférés kell. Tárhelytörlés, böngésző
 
 ## Viewer és kompatibilitás
 
-A megbízható viewer bootstrap lekéri és ellenőrzi a fájlokat, majd `srcdoc` dokumentumban, beágyazott data URL-es erőforrásokkal jeleníti meg őket:
+A HPPT alkalmazásban marad a WebTorrent/WebRTC engine. Minden csomag külön originen, normál böngészőlapon jelenik meg, például:
 
-```html
-<iframe sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+```text
+http://<infoHash>.hppt.localhost:5174/pages/home.html?mode=1#details
 ```
 
-Ez a felhasználó által jóváhagyott architektúra: az opaque iframe közvetlen navigációját a Chromium nem adja át a Service Workernek. A szülőből létrehozott blob URL-ek sem hordozhatók megbízhatóan ebbe a környezetbe. A nyers `/content/<hash>/<path>` fájlokat csak a sessionhöz kötött, megbízható bootstrap kéri le; a belső oldal címe `about:srcdoc`.
+Az oldal saját Service Workere az eredeti fájlbytes tartalmat adja vissza. Cache-hiánykor dedikált MessagePorton kéri a fájlt a nyitott HPPT alkalmazástól. A natív böngésző kezeli a HTML-t, CSS importokat, képeket, ES-modulokat, relatív navigációt, queryt és fragmentet. Nincs HTML/CSS-átírás, data URL-es csomagolás vagy megjelenítő iframe. A vezérlő UI rejtett, oldalankénti `__hppt` helper frame-je kizárólag a worker és az alkalmazás közötti üzenetkapcsolatot tartja fenn, és worker-újraindulás után újraköti azt.
 
-A szigorú CSP blokkolja a külső fetch/script/image/CSS kéréseket, a workert, beágyazott frame-et és űrlapot. A tartalom nem kap `allow-same-origin`, popup, top-navigation, form vagy download jogot. A bridge ellenőrzi az origint, source-ot, nonce-t, sessiont, verziót és hash-t; dedikált portokat és véges kérésszámot/timeoutot használ. Worker-újrainduláskor újrakapcsolódik.
+A külön originek azonos schemeful site-on belül legyenek. Ez szükséges ahhoz, hogy a helper iframe-ben előkészített worker/cache a külön megnyitott oldalon is ugyanahhoz a tárhelyhez tartozzon. Fejlesztésben az `app.hppt.localhost` és `<hash>.hppt.localhost` ezt biztosítja. A Playwright tesztekben a tárhely-particionálás bekapcsolva marad, ezt külön negatív teszt ellenőrzi.
 
-A támogatott demó statikus HTML, CSS, képek, klasszikus JS és relatív HTML-aloldalak. ES modul, storage, fetch-alapú alkalmazás, backend, általános SPA és az eredeti `window.location`-re épülő router nincs garantálva. A `srcset` és a beágyazott frame-ek nem támogatottak. A külső linkre kattintás blokkolt; az iframe programozott saját navigációja miatt ez nem teljes exfiltrációvédelem. A protokoll anonimitást sem ad: a peer, tracker és TURN hálózati metaadatokat láthat. Csak nyilvános demótartalommal tesztelj.
+A tartalom a saját originjének storage-át használhatja, ezért a cache nem bizalmi határ. A worker az eredeti torrent `info` részének SHA-1 hash-ét a hostnévben szereplő infoHash-hez ellenőrzi, majd a manifestet tartalmazó torrentdarabokat hitelesíti. Ebből kapja a manifest SHA-256 fájlhash-eit. Minden cache-elt fájlt újra ellenőriz kiszolgáláskor; worker-újraindulás után a tárolt manifestbizonyítékot is újra hitelesíti. A `__hppt` útvonaltér fenntartott, csomag nem tartalmazhat ilyen fájlt.
+
+A CSP engedi a csomag saját scriptjeit, stílusait, képeit, moduljait és az ugyanazon originre mutató GET/fetch kéréseket; blokkolja a külső erőforrásokat, az új workert, a frame-et és az űrlapbeküldést. A `Cross-Origin-Opener-Policy: same-origin` leválasztja a viewer ablakot a vezérlőről. Az `Origin-Agent-Cluster: ?1` megakadályozza a `document.domain` alapú origin-összevonást. A bridge origin/source/nonce/session/verzió/hash szerint ellenőrzött és kérésenként időkorlátos.
+
+Backend és tetszőleges POST nincs; explicit hiányzó fájl 404-et ad, SPA-fallback nincs. Külső linkre vagy más címre navigálni normál böngészőablakban lehet: ez nem exfiltrációvédelmi vagy anonimitási rendszer. A peer, tracker és TURN hálózati metaadatokat láthat. Csak nyilvános demótartalommal tesztelj.
 
 ## Konfiguráció, LAN és production
 
@@ -83,7 +91,9 @@ npm run setup:dev -- --turn-host 192.168.1.50
 
 LAN/mobil teszthez a `http://192.168.x.x` nem localhost secure context. Mindkét originhez megbízható HTTPS, a trackerhez WSS, elérhető TURN IP és megfelelő tűzfal/NAT szükséges. A telefon `localhost` címe a telefont jelenti. A Vite kiszolgáló loopbacken figyel; LAN/publikus eléréshez HTTPS reverse proxy vagy külön statikus host kell. A frontend hostnevek legyenek a böngészőből elérhetők, ne Compose szolgáltatásnevek.
 
-Productionban a két frontend statikus buildjét külön, lehetőleg cookie-mentes viewer domainen szolgáld ki. A megfelelő `APP_ORIGIN`, `VIEWER_ORIGIN`, `TRACKER_URL` és `ICE_API_URL` értékekkel buildelj; a `/runtime-config.json` csak publikus adatokat tartalmazzon. A viewer `/content/` útvonala szerveroldalon mindig 503/404 legyen, HTTP payload vagy SPA fallback nélkül. A viewer CSP-fejléceit a [Vite host-konfiguráció](scripts/vite-shared.ts) szerint állítsd be a statikus hoston is.
+Productionban például `APP_ORIGIN=https://app.example.com` és `VIEWER_ORIGIN=https://sites.example.com` használható. A `<hash>.sites.example.com` hostokhoz wildcard DNS és megbízható wildcard TLS-tanúsítvány kell; a viewer originjei legyenek cookie-mentesek, az alkalmazás hitelesítése host-only cookie-t használjon. A helper és a külön megnyitott oldal tárhelyének megosztásához azonos schemeful site szükséges.
+
+A viewer host kizárólag a `/__hppt/` útvonaltérben szolgálhat ki megbízható indítófájlokat; ezt a prefixet a viewer build könyvtárára kell képezni. A workerhez `Service-Worker-Allowed: /` fejléc kell. Minden egyéb útvonal szerveroldalon 503/404, HTTP payload- és SPA-fallback nélkül. A CSP-, nosniff- és origin-fejléceket a [Vite host-konfiguráció](scripts/vite-shared.ts) szerint állítsd be. A UI `/runtime-config.json`, illetve a viewer `/__hppt/runtime-config.json` végpontja csak publikus beállításokat tartalmazhat.
 
 Saját felhasználókezelés nincs. A production ICE API külső hitelesítő gatewayt feltételez, szerveroldali `TURN_SECRET` és `AUTH_PROXY_TOKEN` beállítással. A gateway levágja a bejövő `X-Authenticated-User`/`X-HTPPT-Gateway-Token` fejléceket, majd a hitelesített azonosítót és saját titkos gateway-tokenjét állítja be. Az ICE API csak a gateway felől legyen elérhető. A gateway-token és TURN shared secret sosem kerülhet frontendbe. A credential endpoint szűk CORS-t, no-store-t, rate limitet és kiadási kvótát használ.
 

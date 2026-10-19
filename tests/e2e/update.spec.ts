@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { APP, ready, publish, start, stop, content, buildDirectories } from './helpers';
+import { APP, ready, publish, start, stop, content, buildDirectories, trackViewers } from './helpers';
 
 const originalDirectory = buildDirectories.web;
 let directory: string;
@@ -17,6 +17,7 @@ test.beforeAll(async () => {
   await start();
 });
 test.afterEach(async () => { await writeFile(workerPath, currentWorker); });
+test.beforeEach(({ page }) => { trackViewers(page); });
 test.afterAll(async () => {
   await stop();
   buildDirectories.web = originalDirectory;
@@ -79,7 +80,7 @@ test('a cached legacy app reloads on upgrade and retains its saved package', asy
 });
 
 test('a cached legacy app on the loopback alias upgrades and redirects to APP_ORIGIN', async ({ page }) => {
-  const alias = APP.replace('localhost', '127.0.0.1');
+  const alias = APP.replace(new URL(APP).hostname, '127.0.0.1');
   const update = await legacyShell(page, alias);
   const suffix = '/open?source=upgrade#publish';
   await page.goto(`${alias}${suffix}`);

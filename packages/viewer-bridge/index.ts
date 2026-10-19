@@ -5,15 +5,16 @@ export const Hello = Base.extend({ type: z.literal('ready'), nonce: z.string().u
 export const Init = Base.extend({ type: z.literal('init'), nonce: z.string().uuid() }).strict();
 export const ViewerStatus = Base.extend({ type: z.literal('viewer-status'), nonce: z.string().uuid(), state: z.enum(['loaded', 'error']), text: z.string().max(8192), uri: z.string().max(8192) }).strict();
 export const Clear = Base.extend({ type: z.literal('clear'), nonce: z.string().uuid() }).strict();
+export const Pin = Base.extend({ type: z.literal('pin'), nonce: z.string().uuid() }).strict();
 export const Cleared = Base.extend({ type: z.literal('cleared'), nonce: z.string().uuid(), ok: z.boolean() }).strict();
 export const RequestSchema = Base.extend({ type: z.literal('read'), id: z.string().uuid(), path: z.string() }).strict();
 export const CancelSchema = Base.extend({ type: z.literal('abort'), id: z.string().uuid() }).strict();
 export const ReplySchema = Base.extend({ type: z.literal('result'), id: z.string().uuid(), status: z.number().int().min(100).max(599), mime: z.string().optional(), bytes: z.instanceof(ArrayBuffer).optional(), error: z.string().optional() }).strict();
 export const MAX_PENDING = 32;
 export const TIMEOUT = 22000;
-export async function workerControl() {
+export async function workerControl(script = '/sw.js') {
   if (!('serviceWorker' in navigator)) throw new Error('Service Workers require HTTPS / localhost');
-  const registration = await navigator.serviceWorker.register('/sw.js', { type: 'module', scope: '/', updateViaCache: 'none' });
+  const registration = await navigator.serviceWorker.register(script, { type: 'module', scope: '/', updateViaCache: 'none' });
   await navigator.serviceWorker.ready;
   if (!navigator.serviceWorker.controller) await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => { navigator.serviceWorker.removeEventListener('controllerchange', change); reject(new Error('Worker control timeout')); }, 10000);

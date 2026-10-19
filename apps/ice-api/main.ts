@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { normalizeAppOrigin } from '../../scripts/origins.ts';
 
 const env = process.env;
 const production = env.NODE_ENV === 'production';
@@ -9,7 +10,7 @@ const server = createServer((req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   const origin = req.headers.origin;
-  const app = env.APP_ORIGIN || 'http://localhost:5173';
+  const app = normalizeAppOrigin(env.APP_ORIGIN);
   if (origin && origin !== app) { res.writeHead(403).end(); return; }
   if (origin) { res.setHeader('Access-Control-Allow-Origin', app); res.setHeader('Access-Control-Allow-Credentials', 'true'); res.setHeader('Vary', 'Origin'); }
   if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Credentials', 'true'); res.writeHead(204).end(); return; }

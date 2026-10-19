@@ -3,6 +3,7 @@ import MemoryStore from 'memory-chunk-store';
 import { z } from 'zod';
 import { assertHash, DEFAULT_LIMITS, Fault, MANIFEST, makeManifest, mapTorrentFiles, validateManifest, verify, type Manifest, type InputFile, type Limits } from '@htppt/protocol';
 import { checkSite, listSites, loadFile, loadSite, removeSite, saveSite, storeFile, type StoredSite } from './storage';
+import { makeAuthority } from '@htppt/protocol/authority';
 export type Config = { appOrigin: string; viewerOrigin: string; tracker: string; iceApi: string; policy: RTCIceTransportPolicy; limits: Limits };
 const Ice = z.object({ iceServers: z.array(z.object({ urls: z.array(z.string()), username: z.string().optional(), credential: z.string().optional() })), expiresAt: z.number() });
 export async function bounded<T>(promise: Promise<T>, ms = 20000, signal?: AbortSignal): Promise<T> {
@@ -84,6 +85,16 @@ export class Engine {
     const operation = this.doOpen(hash);
     this.opening.set(hash, operation);
     try { return await operation; } finally { this.opening.delete(hash); }
+  }
+  async authority(hash: string) {
+    await this.open(hash);
+    const saved = await loadSite(hash);
+    if (saved && await checkSite(saved, this.config.limits)) return makeAuthority(hash, saved.torrent, saved.manifestBytes, async path => (await this.readFile(hash, path)).bytes, this.config.limits);
+    const torrent = this.client && await this.client.get(hash);
+    if (!torrent) throw new Fault(503, 'Open the package before preparing its viewer');
+    const file = mapTorrentFiles(torrent.name, torrent.files).get(MANIFEST) as any;
+    const manifestBytes = new Uint8Array(await bounded<ArrayBuffer>(file.arrayBuffer()));
+    return makeAuthority(hash, new Uint8Array(torrent.torrentFile), manifestBytes, async path => (await this.readFile(hash, path)).bytes, this.config.limits);
   }
   private async doOpen(hash: string) {
     const saved = await loadSite(hash);

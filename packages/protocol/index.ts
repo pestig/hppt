@@ -34,9 +34,6 @@ export function parseAddress(value: string): Address {
   return { hash: assertHash(match[1]), path: urlPath(match[2] || ''), query: match[3] || '', fragment: match[4] || '' };
 }
 export function encodePath(path: string) { return filePath(path).split('/').map(encodeURIComponent).join('/'); }
-export function contentURL(origin: string, address: Address, entrypoint: string) {
-  return `${origin}/content/${assertHash(address.hash)}/${encodePath(address.path ?? entrypoint)}${address.query}${address.fragment}`;
-}
 const MIME: Record<string, string> = {
   html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8', css: 'text/css; charset=utf-8',
   js: 'text/javascript; charset=utf-8', txt: 'text/plain; charset=utf-8', json: 'application/json',
@@ -63,7 +60,7 @@ export function validateManifest(input: unknown, limits: Limits = DEFAULT_LIMITS
   let total = 0;
   for (const f of manifest.files) {
     filePath(f.path);
-    if (f.path === MANIFEST || paths.has(f.path)) throw new Fault(422, 'Duplicate or reserved path');
+    if (f.path === MANIFEST || f.path.split('/')[0] === '__hppt' || paths.has(f.path)) throw new Fault(422, 'Duplicate or reserved path');
     if (f.mime.split(';')[0] !== mimeFor(f.path).split(';')[0]) throw new Fault(422, 'MIME does not match file extension');
     paths.add(f.path); total += f.size;
     if (f.size > limits.file || total > limits.total) throw new Fault(413, 'Package size limit');
@@ -95,8 +92,4 @@ export function mapTorrentFiles<T extends { path: string; length: number }>(name
     for (const f of manifest.files) if (map.get(f.path)?.length !== f.size) throw new Fault(422, 'Torrent/manifest mismatch');
   }
   return map;
-}
-export function contentPolicy(origin: string, hash: string) {
-  const root = `${new URL(origin).origin}/content/${assertHash(hash)}/`;
-  return `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${root}; style-src 'unsafe-inline' ${root}; img-src data: ${root}; font-src ${root}; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 }

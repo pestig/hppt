@@ -1,1 +1,1 @@
-{"name":"@htppt/protocol","version":"0.1.0","type":"module","exports":"./index.ts"}
+{"name":"@htppt/protocol","version":"0.1.0","type":"module","exports":{".":"./index.ts","./site":"./site.ts","./authority":"./authority.ts"}}

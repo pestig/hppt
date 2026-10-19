@@ -1,16 +1,16 @@
 # HPPT v0.1 — megvalósítási specifikáció
 
-## Jóváhagyott viewer-architektúra
+## Viewer-architektúra
 
-A felhasználó jóváhagyta a közvetlen belső iframe-URL helyett a `srcdoc` megjelenítést. A Chromium az opaque originű iframe navigációját nem adja át a Service Workernek. A megbízható bootstrap ezért saját, kontrollált kliensként kéri le a `/content/<hash>/<path>` fájlokat. Ezek ellenőrzött bytes tartalmából önálló `srcdoc` dokumentumot és beágyazott data URL-es erőforrásokat készít. A szülő originjében létrehozott blob URL-eket az opaque iframe nem minden esetben tudja betölteni.
+A HPPT alkalmazás nyitott ablakában fut a WebTorrent/WebRTC engine. Minden csomag külön originen és külön böngészőlapon jelenik meg: fejlesztésben `http://<infoHash>.hppt.localhost:5174/<path>`, a vezérlő címe `http://app.hppt.localhost:5173`.
 
-A belső iframe továbbra is pontosan `sandbox="allow-scripts"`, `referrerpolicy="no-referrer"`. A dokumentum elejére, a tartalom elé kerülő CSP csak inline/data erőforrásokat enged, külső scriptet, képet, stílust, fetch-et, workert és frame-et tilt. A bootstrap nem illeszti be élő DOM-jába a kapott HTML-t: inert template-ben dolgozza fel. A CSS URL-eket és importokat parserrel oldja fel. A belső oldalak közötti navigáció dedikált porton történik, sessionönként csak az adott hash-en belül. Külső link kattintása blokkolt. Az iframe programozott saját navigációja továbbra sem tökéletes exfiltrációs határ.
+Az oldal Service Workere az eredeti HTML/CSS/JS/kép fájlokat cache-ből vagy dedikált MessagePorton az alkalmazástól olvassa, teljes integritásellenőrzés után `Response`-ként adja vissza. A böngésző natívan kezeli az oldalt. A vezérlő rejtett, oldalankénti helper iframe-je a workerrel való kapcsolatot tartja fenn; a tartalom nincs iframe-be ágyazva. A helper és a top-level oldal azonos tárhelypartíciójához a külön originek azonos schemeful site-on legyenek.
 
-A tényleges fájlútvonal, query és fragment a viewer logikai címében és a megosztható URI-ban marad meg. A belső `location` nem eredeti HTTP-hely: az erre épülő JS/SPA nem garantált. Ez a jóváhagyott módosítás felülírja az eredeti közvetlen iframe-navigációs elvárást. A worker nyers fájlválaszának CSP/nosniff fejlécei ettől külön védelmi réteget alkotnak.
+A tartalom saját storage-ot használhat, ezért az offline manifestet az infoHash-hez kötött torrentbizonyítékkal kell hitelesíteni: az eredeti `info` bytes SHA-1 hash-e, a manifestet tartalmazó darabok SHA-1 ellenőrzése, utána a fájlok manifest szerinti SHA-256 ellenőrzése. Új worker ezt a bizonyítékot újra hitelesíti. A `/__hppt/` a megbízható bootstrap/SW fenntartott útvonala; a szerver más útvonalon nem szolgálhat ki csomagtartalmat.
 
 ## A dokumentum célja és státusza
 
-Ez egy fejlesztő agentnek átadható megvalósítási specifikáció egy új repositoryhoz. A leírt fájlokat, parancsokat és szolgáltatásokat az agentnek kell létrehoznia. Ez a README önmagában nem kész implementáció; az alábbi futtatási parancsok az elkészült projekt elvárt szerződését adják meg. A Compose-minta kiindulópont, a konkrét implementációval együtt ellenőrizendő.
+Ez a dokumentum a HPPT MVP követelményeit rögzíti. A tényleges futtatási parancsokat a README, a lefuttatott ellenőrzéseket a megvalósítási jegyzőkönyv tartalmazza.
 
 **Feladat:** készíts működő, böngészős P2P statikusweboldal-publikálót és -böngészőt TypeScriptben. Egy felhasználó kiválaszt egy HTML/CSS/JS/kép fájlokat tartalmazó könyvtárat, publikálja, és megoszt egy HPPT-linket. Egy másik böngésző a tartalmat WebRTC-n, WebTorrent segítségével tölti le, megjeleníti, és tovább is osztja.
 
@@ -33,8 +33,8 @@ Használj npm workspaces monorepót, TypeScript strict módot, ESM-et, Vite-ot, 
 
 ```text
 apps/
-  web/                  # vezérlő UI + WebTorrent engine, localhost:5173
-  viewer/               # külön originű statikus viewer host, localhost:5174
+  web/                  # vezérlő UI + WebTorrent engine, app.hppt.localhost:5173
+  viewer/               # oldalankénti viewer host, <hash>.hppt.localhost:5174
   tracker/              # bittorrent-tracker WebSocket szerver, :8000
   ice-api/              # ICE konfiguráció / rövid életű TURN credential, :3001
 packages/
@@ -83,11 +83,15 @@ WebTorrent tracker esetén nem kell külön saját SDP-signaling protokollt írn
 3. A manifestet és a szükséges fájlokat a tartós tárolóból, hiányuk esetén a torrent metadata lekérése után P2P-n olvassa be. Üres URI-útvonalnál a manifest `entrypoint` mezőjét oldja fel; explicit útvonalnál kizárólag az adott fájlt keresi.
 4. A viewer host megbízható bootstrapja regisztrálja a saját Service Workerét; várjon a worker általi tényleges vezérlésre is, ne csak a regisztrációra.
 5. A vezérlő UI átad egy dedikált MessagePortot a viewer bootstrapnak, amely összeköti azt a workerrel.
-6. A worker a `/content/<infoHash>/<path>` kéréseket cache-ből vagy ezen a bridge-en keresztül teljesíti.
-7. A megbízható bootstrap a worker HTTP-válaszaiból ellenőrzött erőforrásokat készít, és srcdoc dokumentumban, sandboxolt belső iframe-ben jeleníti meg az oldalt. A relatív hivatkozásokat a tényleges csomagbeli fájlútvonalhoz oldja fel, és megőrzi a queryt és fragmentet a logikai HPPT-címben.
+6. Az oldal originen futó worker a `/<path>` kéréseket cache-ből vagy ezen a bridge-en keresztül teljesíti.
+7. A UI külön böngészőlapot nyit a csomag saját originjének tényleges fájlútvonalán. A böngésző az eredeti HTML/CSS/JS bytes tartalmat jeleníti meg, kezeli a relatív hivatkozásokat, queryt és fragmentet.
 8. A letöltött torrent élő kliens mellett továbbosztható.
 
-A workerből soha ne legyen automatikus HTTP fallback a `/content/` útvonalakra. Peerhiány esetén értelmes hiba és újrapróbálás kell, nem SPA `index.html` 200-as válasz.
+A protokollkezelő és a másolható `/open?uri=…` link könnyű indítóoldalt tölt be: a belépési lap maga navigál a csomag tényleges viewer-címére. Teljes helyi csomagnál WebRTC és külön vezérlőlap nélkül ellenőrzi a csomagot és a viewer tartós tárolását. Letöltendő csomagnál az alkalmazás originjén működő BroadcastChannelen kiválaszt egy már nyitott vezérlőlapot, amely előkészíti a viewert és fenntartja a P2P bridge-et. Vezérlő hiányában külön alkalmazáslap indul; blokkolt ablaknyitáskor felhasználó által kattintható indítógomb kell. Több vezérlő esetén kérésazonosító és kiválasztott vezérlőazonosító biztosítsa, hogy egy kérést egy vezérlő dolgozzon fel. A query, fragment, entrypoint-feloldás és explicit 404 szabályai ezen az útvonalon is érvényesek.
+
+A csomag saját HTTP(S)-URL-jének friss profilban történő közvetlen megnyitása is indítsa el ezt az előkészítést. Telepített Service Worker hiányában a viewer host kizárólag a `GET`, `Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document` kérésre adjon nem cache-elhető 302-es átirányítást az alkalmazás `/open?uri=…&source=viewer` belépési pontjára. A hash-t a validált hostnévből, az útvonalat/queryt az eredeti kérésből vegye; tetszőleges visszatérési URL-t ne fogadjon. A HTTP-ben nem küldött fragmentet a böngésző átirányítási öröklése őrizze meg, a launcher a `source=viewer` jelölésnél adja hozzá a belső URI-hoz. A kiszolgáló ekkor sem ad vissza csomagfájlt; fetch-, iframe- és erőforráskérésre megmarad az 503-as, payload nélküli válasz.
+
+A workerből soha ne legyen automatikus HTTP fallback a csomagfájlok útvonalaira. Peerhiány esetén értelmes hiba és újrapróbálás kell, nem SPA `index.html` 200-as válasz.
 
 ## Protokoll v0.1
 
@@ -104,7 +108,7 @@ A v0.1 torrent v1 `infoHash`-t használ, nem önkényesen előállított SHA-256
 - A tracker címét a kliens konfiguráció adja; a v0.1 link ne fogadjon tetszőleges tracker/ICE URL-t.
 - A `web+hppt://<hash>` és `web+hppt://<hash>/` cím a manifest `entrypoint` fájlját nyitja meg. Az `index.html` nem kötelező.
 - Explicit útvonal, például `/about.html`, pontosan az adott fájlt jelenti; hiányakor 404 jár, nincs entrypoint fallback.
-- Feloldás után a viewer a tényleges csomagbeli fájlútvonalat tartsa meg logikai dokumentumcímként. Például `pages/home.html` erőforrásai a `/content/<infoHash>/pages/home.html` bázishoz képest oldódjanak fel. A query és fragment maradjon meg a HPPT-címben. A belső iframe srcdoc dokumentum, saját URL-je `about:srcdoc`.
+- Feloldás után a külön viewer ablak a tényleges csomagbeli fájlútvonalra navigáljon. A `pages/home.html` erőforrásait a böngésző ezen valós URL-hez képest oldja fel. A query és fragment maradjon meg.
 - A hash új verziónál változik. Nincs mutable névfeloldás, DNS vagy automatikus frissítés a v0.1-ben.
 - Az URL query és fragment megőrzendő a megjelenítéshez, de nem része a fájl kulcsának. A letöltés a pathname alapján történik.
 - Normalizálj és validálj minden útvonalat. Tiltsd a `..`, NUL, backslash, kódolt elválasztó és többszörös dekódolásból eredő kikerüléseket. Legyen explicit szabály a kis/nagybetűkre, Unicode-ra és ismételt útvonalakra.
@@ -147,42 +151,32 @@ navigator.registerProtocolHandler(
 
 HTTPS-en ellenőrizd a tényleges regisztrációt. A localhost fejlesztői kivételeire ne építs hordozható ígéretet. Legyen mindig működő URI beillesztés és HTTPS-link. A natív `hppt://` integráció külön, későbbi projekt.
 
-## Viewer és biztonsági modell — kötelező megvalósítás
+## Viewer és biztonsági modell
 
-A vezérlő UI és a viewer host **külön origin** legyen: fejlesztésben eltérő port; élesben lehetőleg külön, cookie-mentes domain. A viewer szerver ne tartalmazzon alkalmazástitkot, session cookie-t vagy credential endpointot.
+A vezérlő és minden csomag külön origin. A külön ablak önmagában nem izoláció. Egy csomag csak a saját hash-éhez kötött fájlokat kérheti; a hash a viewer hostname része. A tartalom storage-a megosztott az oldal saját workerével, ezért a worker minden cache-válaszát hitelesített manifesttel ellenőrizze.
 
-A viewer megbízható bootstrapját a UI kizárólag a konfigurált viewer originről fogadja el. A bootstrap üzeneténél ellenőrizd az `event.origin`, `event.source`, session nonce és a protokollverzió értékét. Ezután dedikált MessageChannel működjön. Egy site/session csak a saját hash-éhez férhessen hozzá. Ne használj globális, minden kliens számára elérhető válaszbuszt.
-
-A nem megbízható tartalom belső iframe-je:
-
-```html
-<iframe sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
-```
-
-Ne legyen `allow-same-origin`, top-navigation, popup, form vagy download jogosultság. A sandbox miatt az oldal opaque originű; CORS-os fetch, ES module, storage és több SPA-funkció korlátozott lehet. Az MVP garantált demója relatív CSS-t, képeket, klasszikus scriptet és relatív aloldallinkeket használjon. Ne próbáld `allow-same-origin` bekapcsolásával általánosan megoldani a kompatibilitást.
-
-A peerből érkező HTML válaszán a worker állítson be a tartalomtól független, szigorú CSP-t, például kiindulásként:
+A worker az eredeti fájlokat adja vissza, HTML/CSS átírás nélkül. A tartalomtól független HTTP-fejlécek:
 
 ```text
-sandbox allow-scripts;
 default-src 'none';
-script-src 'unsafe-inline' http://localhost:5174/content/<CURRENT_HASH>/;
-style-src 'unsafe-inline' http://localhost:5174/content/<CURRENT_HASH>/;
-img-src data: http://localhost:5174/content/<CURRENT_HASH>/;
-font-src http://localhost:5174/content/<CURRENT_HASH>/;
-connect-src 'none';
+script-src 'self' 'unsafe-inline';
+style-src 'self' 'unsafe-inline';
+img-src 'self' data:;
+font-src 'self';
+connect-src 'self';
 worker-src 'none';
 frame-src 'none';
 object-src 'none';
-base-uri 'none';
-form-action 'none'
+base-uri 'self';
+form-action 'none';
+frame-ancestors 'none'
 ```
 
-Az origint és hash-t validált konfigurációból generáld; productionban HTTPS legyen. Ez policy-tervezet, amelyet valódi böngészőben tesztelni kell. Ne használj `'self'`-et gondolkodás nélkül opaque origin mellett. A tartalomból érkező header/manifest nem lazíthat a policy-n. Küldj `X-Content-Type-Options: nosniff` fejlécet is. Az elérhető `/content/` fájlokra a hozzáférést session és hash szerint ellenőrizd; ne csak a CSP-re támaszkodj.
+Kötelező a `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin` és `Origin-Agent-Cluster: ?1`. A tartalom saját helyi storage-ot használhat, az alkalmazás és más csomagok storage-át nem érheti el. A külső erőforráskérések, worker-regisztráció és beágyazott frame blokkolt. Külső felső szintű navigáció lehetséges, ezért a megoldás nem exfiltrációvédelmi vagy anonimitási rendszer.
 
-A sandbox + CSP nem általános hálózati anonimizáló vagy tökéletes exfiltrációvédelmi határ; az iframe saját navigációjával kapcsolatos korlátokat is dokumentáld. A megnyitott linkek viselkedése legyen tesztelt. A viewer hoston szigorúan különítsd el a bootstrap/SW útvonalakat a `/content/` tartalomtól, és tiltott útvonalra ne legyen app fallback.
+A trusted helper a `/__hppt/` útvonalon fusson; csak innen származó, helyes nonce/session/hash értékű worker-init fogadható el. A UI az üzenet originjét, source-át és protokollverzióját is ellenőrizze, majd hash-re korlátozott dedikált MessageChannelen szolgáljon ki fájlokat. Rossz source/origin/nonce/session/hash ne cserélhesse le a bridge-et.
 
-A protokoll anonimitást nem ad: peer/tracker/TURN láthat hálózati metaadatot, közvetlen kapcsolódásnál a társ IP-címet is. Csak nyilvános demótartalommal tesztelj; betegadat nem való ebbe az MVP-be.
+A viewer HTTP-host csak a bootstrap és worker indítófájljait szolgálhatja ki. A csomagfájlokra szerveroldali 503/404 jár. A worker scripthez `Service-Worker-Allowed: /` kell. A `/__hppt` útvonaltér csomagbeli fájlnévként tiltott. A production wildcard hostokhoz DNS/TLS és azonos schemeful site szükséges.
 
 ## P2P adapter és Service Worker bridge
 
@@ -199,7 +193,7 @@ Cache-kulcs: protokollverzió + infoHash + normalizált path. Csak ellenőrzött
 A korábban betöltött alkalmazás a böngésző bezárása után, internet nélkül is induljon el a saját HTTPS-/localhost-címéről, és nyissa meg a teljesen cache-elt oldalt.
 
 - A vezérlő UI saját Service Workere cache-elje az alkalmazás indításához szükséges HTML-, JS- és CSS-fájlokat, valamint az offline induláshoz szükséges publikus konfigurációt. A támogatott belépési útvonalak, köztük az `/open?uri=…`, hálózat nélkül is indítsák el az alkalmazást.
-- A külön originű viewer saját Service Workere cache-elje a megbízható bootstrapot és annak indítási függőségeit is. A bootstrap offline kiszolgálása ne vezessen HTTP fallbackhez a `/content/` útvonalakon.
+- A külön originű viewer saját Service Workere cache-elje a megbízható bootstrapot és annak indítási függőségeit is. A bootstrap offline kiszolgálása ne vezessen HTTP fallbackhez a csomagfájlok útvonalain. A teljesen mentett oldal a vezérlőablak nélkül is induljon a saját címén.
 - Csak a teljesen letöltött, ellenőrzött és tartósan tárolt csomag kapjon „Offline elérhető” jelölést. A manifestet és a helyi megnyitáshoz szükséges adatokat is tárold; részleges letöltés vagy sikertelen tárolás nem elég. Újraindításkor ellenőrizd a helyi adatok meglétét, és hiány esetén vond vissza a jelölést.
 - Offline induláskor a helyi tartalom megjelenítése ne várjon trackerre, ICE API-ra vagy hitelesítésre. A session és a bridge helyben is felépüljön, az origin-/hash-izoláció és a tartalomellenőrzés megőrzésével.
 - Első használatkor kell internet. Az offline működés a böngésző által megőrzött adatokra támaszkodik; törölt vagy kiürített tárhely után nem garantálható. A PWA telepítése opcionális.
@@ -224,8 +218,8 @@ npm run setup:dev -- --turn-host 192.168.1.50
 A `dev` indítsa a web UI-t és viewer hostot párhuzamosan, kezelje a leállítást, és jelenítse meg:
 
 ```text
-Web UI:      http://localhost:5173
-Viewer host: http://localhost:5174
+Web UI:      http://app.hppt.localhost:5173
+Viewer host: http://hppt.localhost:5174
 Tracker:     ws://localhost:8000
 ICE API:     http://localhost:3001
 ```
@@ -237,8 +231,8 @@ A böngészőnek elérhető hostneveket add át; a Compose belső `tracker`, `ic
 ### Elvárt környezeti változók
 
 ```dotenv
-APP_ORIGIN=http://localhost:5173
-VIEWER_ORIGIN=http://localhost:5174
+APP_ORIGIN=http://app.hppt.localhost:5173
+VIEWER_ORIGIN=http://hppt.localhost:5174
 TRACKER_URL=ws://localhost:8000
 ICE_API_URL=http://localhost:3001/ice
 TURN_HOST=127.0.0.1
@@ -421,7 +415,7 @@ Kötelező tesztesetek:
 | Pin és reload | Tartós adatból valóban újraindul a seedelés |
 | Integritáshiba | Sérült fájl nem renderelődik és nem kerül sikeres cache-be |
 | Útvonalvédelem | Traversal és double-encoding nem ad hozzáférést más fájlhoz |
-| Site izoláció | Tartalom nem éri el a UI storage-át, nem regisztrál SW-t, nem navigálhatja a top ablakot |
+| Site izoláció | Tartalom nem éri el a UI storage-át, nem regisztrálhat saját workert, és nem fér hozzá a leválasztott vezérlőablakhoz |
 | Bridge izoláció | Rossz source/origin/nonce/session/hash elutasítva |
 | Külső erőforrás | Nem engedélyezett fetch/script/image CSP szerint blokkolva |
 | SW lifecycle | Első telepítés, controller-váltás, reload és cache-verzióváltás kezelve |
@@ -439,8 +433,8 @@ A hibás adat/credential negatív teszt tesztfixture legyen, ne a produkciós el
 | Localhoston jó, telefonon nem | HTTPS trust, WSS, LAN hostnevek, tűzfal, localhost helytelen használata |
 | HTTPS mellett blokkolt WS | Tracker WSS-re váltása és reverse proxy upgrade |
 | Üres viewer | Worker vezérlés, bridge handshake, CSP és fájlútvonal-leképezés |
-| CSS/kép helyett HTML jön | Hibás SPA fallback a `/content/` útvonalon |
-| JS modul nem fut | Sandbox opaque origin/CORS korlát; az MVP nem ígér teljes modulkompatibilitást |
+| CSS/kép helyett HTML jön | Hibás SPA fallback a csomagfájlok útvonalán |
+| JS modul nem fut | Modulfájl útvonala, MIME, worker-vezérlés és CSP; az eredeti ES-moduloknak működniük kell |
 | Cache megvan, de nincs seed | A WebTorrent metadata/darabstore nem állt helyre |
 | Friss profilban nincs tartalom a seeder bezárása után | Nincs élő seeder; a Service Worker nem állandó seed daemon |
 | Korábbi profil offline nem indul | UI és viewer bootstrap cache-e, SW scope/vezérlés, megőrzött tárhely és a teljes ellenőrzött csomag megléte |
@@ -454,7 +448,7 @@ A UI mutassa a peer countot, ellenőrzött byte-okat, feltöltést/letöltést, 
 3. Bizonyítsd a valódi relay-only adatátvitelt még a viewer elkészítése előtt. Ellenőrizd a WebTorrent ICE konfigurációjának pontos API-ját.
 4. Implementáld a HPPT URL-t, csomagolást, manifestet, útvonalakat és integritásellenőrzést.
 5. Implementáld a külön originű viewer bootstrappot, a dedikált bridge-et és a Service Workert.
-6. Add hozzá a sandbox/CSP védelmet és a hostile fixture teszteket.
+6. Add hozzá az origin-elkülönítést, a CSP védelmet és a hostile fixture teszteket.
 7. Készíts cache/pin/reseed működést, mindkét origin offline bootstrapját, háromprofilos továbbosztási tesztet és megőrzött profillal, leállított szerverek mellett végzett offline újraindítási tesztet.
 8. Készíts protokollregisztrációt, HTTPS-link fallbacket és diagnosztikai UI-t.
 9. Futtasd a teljes tesztmátrixot, majd írd át a README-t a ténylegesen működő parancsokra és verziókra.

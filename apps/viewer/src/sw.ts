@@ -1,108 +1,169 @@
-import { contentPolicy, Fault, filePath, MANIFEST, parseAddress, urlPath, validateManifest, verify, VERSION, type Manifest } from '@htppt/protocol';
-import { Clear, Init, MAX_PENDING, ReplySchema, TIMEOUT } from '@htppt/viewer-bridge';
+import { DEFAULT_LIMITS, Fault, filePath, urlPath, verify, VERSION, type Manifest } from '@htppt/protocol';
+import { decodeAuthority, encodeAuthority, verifyAuthority, type AuthorityProof } from '@htppt/protocol/authority';
+import { originHash, VIEWER_BOOT } from '@htppt/protocol/site';
+import { Clear, Init, Pin, MAX_PENDING, ReplySchema, TIMEOUT } from '@htppt/viewer-bridge';
 import { installShell, shellResponse } from '@htppt/viewer-bridge/shell';
+
 const sw = self as any;
-installShell(sw);
-const CONTENT = 'htppt-verified-0.1';
-type Session = { session: string; hash: string; bootstrap: string; manifest: Manifest; port: MessagePort; pending: Map<string, { resolve: (value: any) => void; timer: ReturnType<typeof setTimeout> }> };
+installShell(sw, false, VIEWER_BOOT);
+const hash = originHash(sw.location.origin);
+const CONTENT = 'hppt-site-files-v1', AUTHORITY = `${VIEWER_BOOT}authority`;
+const policy = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'";
+type Pending = { finish: (value: any) => void; timer: ReturnType<typeof setTimeout> };
+type Session = { id: string; bootstrap: string; port: MessagePort; pending: Map<string, Pending> };
 const sessions = new Map<string, Session>();
-const clients = new Map<string, string>();
-const epochs = new Map<string, number>();
+let manifest: Manifest | undefined;
+let epoch = 0;
+let active = 0;
+const queue: (() => void)[] = [];
+const jobs = new Map<string, Promise<Uint8Array>>();
+async function limits() {
+  const config = await shellResponse(new Request(new URL(`${VIEWER_BOOT}runtime-config.json`, sw.location.origin)), VIEWER_BOOT);
+  const value = config && (await config.json()).limits;
+  if (value && ['files', 'total', 'file'].every(key => Number.isSafeInteger(value[key]) && value[key] > 0)) return value;
+  return DEFAULT_LIMITS;
+}
 function close(id: string) {
-  const s = sessions.get(id);
-  if (!s) return;
-  for (const p of s.pending.values()) { clearTimeout(p.timer); p.resolve({ status: 503, error: 'Engine disconnected' }); }
-  s.port.close(); sessions.delete(id);
-  for (const [client, session] of clients) if (session === id) clients.delete(client);
+  const session = sessions.get(id);
+  if (!session) return;
+  for (const pending of [...session.pending.values()]) pending.finish({ status: 503, error: 'HPPT application disconnected' });
+  session.port.close(); sessions.delete(id);
+}
+async function authority() {
+  if (manifest) return manifest;
+  const response = await (await caches.open(CONTENT)).match(AUTHORITY);
+  if (!response) throw new Fault(503, 'Open this site from the HPPT application first.');
+  manifest = await verifyAuthority(hash, decodeAuthority(await response.text()), await limits());
+  return manifest;
+}
+async function sessionForRead(): Promise<Session> {
+  const live = new Set((await sw.clients.matchAll()).map((client: any) => client.id));
+  for (const session of [...sessions.values()]) if (!live.has(session.bootstrap)) close(session.id);
+  if (!sessions.size) {
+    for (const client of await sw.clients.matchAll()) if (new URL(client.url).pathname.startsWith(VIEWER_BOOT)) client.postMessage({ type: 'hppt-rebind' });
+    const deadline = Date.now() + 4000;
+    while (!sessions.size && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const session = sessions.values().next().value;
+  if (!session) throw new Fault(503, 'Missing local file. Keep the HPPT application open to download it from peers.');
+  return session;
+}
+async function remote(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+  const session = await sessionForRead();
+  if (session.pending.size >= MAX_PENDING) throw new Fault(503, 'Bridge busy');
+  const id = crypto.randomUUID();
+  const result = await new Promise<any>(resolve => {
+    const abort = () => { session.port.postMessage({ type: 'abort', version: VERSION, session: session.id, hash, id }); finish({ status: 503, error: 'Read aborted or timed out' }); };
+    const finish = (value: any) => {
+      const pending = session.pending.get(id); if (!pending) return;
+      clearTimeout(pending.timer); signal?.removeEventListener('abort', abort); session.pending.delete(id); resolve(value);
+    };
+    session.pending.set(id, { finish, timer: setTimeout(abort, TIMEOUT) });
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) { abort(); return; }
+    session.port.postMessage({ type: 'read', version: VERSION, session: session.id, hash, id, path });
+  });
+  if (result.status !== 200 || !result.bytes) throw new Fault(result.status || 503, result.error || 'Peer unavailable');
+  return new Uint8Array(result.bytes);
+}
+async function file(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+  const current = await authority();
+  const record = current.files.find(f => f.path === path);
+  if (!record) throw new Fault(404, 'File not found');
+  const cache = await caches.open(CONTENT), key = `${VIEWER_BOOT}verified/${path}`;
+  const cached = await cache.match(key);
+  if (cached) { const bytes = new Uint8Array(await cached.arrayBuffer()); await verify(bytes, record); return bytes; }
+  if (jobs.has(path)) return jobs.get(path)!;
+  const generation = epoch;
+  const job = new Promise<Uint8Array>((resolve, reject) => {
+    const run = () => {
+      active++;
+      (async () => {
+        const bytes = await remote(path, signal);
+        await verify(bytes, record);
+        if (generation !== epoch) throw new Fault(503, 'Site cache was cleared');
+        try { await cache.put(key, new Response(bytes.slice().buffer)); } catch { /* Pin checks persistence separately. */ }
+        return bytes;
+      })().then(resolve, reject).finally(() => { active--; jobs.delete(path); queue.shift()?.(); });
+    };
+    if (active < 8) run(); else queue.push(run);
+  });
+  jobs.set(path, job); return job;
+}
+async function pin() {
+  const current = await authority();
+  await Promise.all(current.files.map(record => file(record.path)));
+  const cache = await caches.open(CONTENT);
+  for (const record of current.files) {
+    const cached = await cache.match(`${VIEWER_BOOT}verified/${record.path}`);
+    if (!cached) throw new Fault(507, 'Viewer storage quota: incomplete offline package');
+    await verify(new Uint8Array(await cached.arrayBuffer()), record);
+  }
+  const proof = await cache.match(AUTHORITY);
+  if (!proof) throw new Fault(507, 'Viewer authority was not persisted');
+  await verifyAuthority(hash, decodeAuthority(await proof.text()), await limits());
+  await sw.navigator.storage?.persist?.();
 }
 sw.addEventListener('message', (event: any) => {
   event.waitUntil((async () => {
     const source = event.source;
-    if (!source?.url || new URL(source.url).origin !== sw.location.origin || !['/', '/index.html'].includes(new URL(source.url).pathname)) return;
+    if (!source?.url || new URL(source.url).origin !== sw.location.origin || ![VIEWER_BOOT, `${VIEWER_BOOT}index.html`].includes(new URL(source.url).pathname)) return;
     if (event.data?.type === 'close' && sessions.get(event.data.session)?.bootstrap === source.id) { close(event.data.session); return; }
     const params = new URLSearchParams(new URL(source.url).hash.slice(1));
-    const clear = Clear.safeParse(event.data);
-    if (clear.success && event.ports.length === 1 && params.get('nonce') === clear.data.nonce && params.get('session') === clear.data.session && parseAddress(params.get('uri') || '').hash === clear.data.hash) {
-      const { hash } = clear.data; epochs.set(hash, (epochs.get(hash) || 0) + 1);
-      for (const s of [...sessions.values()]) if (s.hash === hash) close(s.session);
-      let ok = true;
-      try {
-        const cache = await caches.open(CONTENT);
-        for (const request of await cache.keys()) if (new URL(request.url).pathname.startsWith(`/__verified/${VERSION}/${hash}/`)) await cache.delete(request);
-      } catch { ok = false; }
-      event.ports[0].postMessage({ ...clear.data, type: 'cleared', ok }); event.ports[0].close(); return;
-    }
-    const { manifest: raw, ...message } = event.data || {};
-    const parsed = Init.safeParse(message);
-    if (!parsed.success || event.ports.length !== 2) return;
-    const config = await (await caches.open((await caches.keys()).find(k => k.startsWith('htppt-shell-'))!)).match('/runtime-config.json');
-    if (!config) return;
-    const manifest = validateManifest(raw, (await config.json()).limits);
-    if (params.get('nonce') !== message.nonce || params.get('session') !== message.session || parseAddress(params.get('uri') || '').hash !== message.hash) return;
-    close(message.session);
-    const live = new Set((await sw.clients.matchAll({ includeUncontrolled: true })).map((client: any) => client.id)); live.add(source.id);
-    for (const s of sessions.values()) if (!live.has(s.bootstrap)) close(s.session);
-    if (sessions.size >= 32) return;
-    const s: Session = { session: message.session, hash: message.hash, bootstrap: source.id, manifest, port: event.ports[0], pending: new Map() };
-    sessions.set(s.session, s); clients.set(source.id, s.session);
-    s.port.onmessage = event => {
-      const result = ReplySchema.safeParse(event.data);
-      if (!result.success || result.data.session !== s.session || result.data.hash !== s.hash) return;
-      const pending = s.pending.get(result.data.id);
-      if (!pending) return;
-      clearTimeout(pending.timer); s.pending.delete(result.data.id); pending.resolve(result.data);
-    };
-    s.port.start(); event.ports[1].postMessage({ type: 'bound', session: s.session }); event.ports[1].close();
+    if (params.get('nonce') !== event.data?.nonce || params.get('session') !== event.data?.session || event.data?.hash !== hash) return;
+    const reply = event.ports[1] || event.ports[0];
+    try {
+      const clear = Clear.safeParse(event.data);
+      if (clear.success && event.ports.length === 1) {
+        epoch++; manifest = undefined;
+        for (const id of [...sessions.keys()]) close(id);
+        await caches.delete(CONTENT);
+        reply.postMessage({ ...clear.data, type: 'cleared', ok: true }); reply.close(); return;
+      }
+      if (Pin.safeParse(event.data).success && event.ports.length === 1) {
+        await pin(); reply.postMessage({ type: 'pinned' }); reply.close(); return;
+      }
+      const { proof, ...data } = event.data || {};
+      const parsed = Init.safeParse(data);
+      if (!parsed.success || event.ports.length !== 2) return;
+      const verified = await verifyAuthority(hash, proof as AuthorityProof, await limits());
+      close(parsed.data.session);
+      manifest = verified;
+      try { await (await caches.open(CONTENT)).put(AUTHORITY, new Response(encodeAuthority(proof))); } catch { /* Pin checks persistence. */ }
+      const session: Session = { id: parsed.data.session, bootstrap: source.id, port: event.ports[0], pending: new Map() };
+      sessions.set(session.id, session);
+      session.port.onmessage = event => {
+        const result = ReplySchema.safeParse(event.data);
+        if (!result.success || result.data.session !== session.id || result.data.hash !== hash) return;
+        session.pending.get(result.data.id)?.finish(result.data);
+      };
+      session.port.start(); reply.postMessage({ type: 'bound' }); reply.close();
+    } catch (error) { reply?.postMessage({ type: 'error', error: error instanceof Error ? error.message : 'Viewer preparation failed' }); reply?.close(); }
   })());
 });
-async function read(s: Session, path: string, signal: AbortSignal): Promise<any> {
-  if (s.pending.size >= MAX_PENDING) throw new Fault(503, 'Too many requests');
-  const id = crypto.randomUUID();
-  return new Promise(resolve => {
-    const finish = (result: any) => { const pending = s.pending.get(id); if (!pending) return; clearTimeout(pending.timer); s.pending.delete(id); signal.removeEventListener('abort', abort); resolve(result); };
-    const abort = () => { s.port.postMessage({ type: 'abort', version: VERSION, session: s.session, hash: s.hash, id }); finish({ status: 503, error: 'Read aborted or timed out' }); };
-    s.pending.set(id, { resolve: result => { signal.removeEventListener('abort', abort); resolve(result); }, timer: setTimeout(abort, TIMEOUT) });
-    signal.addEventListener('abort', abort, { once: true });
-    if (signal.aborted) { abort(); return; }
-    s.port.postMessage({ type: 'read', version: VERSION, session: s.session, hash: s.hash, path, id });
-  });
-}
+
 sw.addEventListener('fetch', (event: any) => {
   const url = new URL(event.request.url);
   if (url.origin !== sw.location.origin) return;
-  if (!url.pathname.startsWith('/content/')) {
-    event.respondWith((async () => await shellResponse(event.request) || new Response('Not found', { status: 404 }))()); return;
-  }
   event.respondWith((async () => {
+    if (url.pathname.startsWith(VIEWER_BOOT)) return await shellResponse(event.request, VIEWER_BOOT) || new Response('Not found', { status: 404 });
     try {
       if (!['GET', 'HEAD'].includes(event.request.method)) return new Response('GET and HEAD only', { status: 405, headers: { Allow: 'GET, HEAD' } });
-      const match = /^\/content\/([a-f0-9]{40})(\/.*)$/.exec(url.pathname);
-      if (!match) throw new Fault(400, 'Invalid content URL');
-      const path = urlPath(match[2]);
-      if (!path || path === MANIFEST) throw new Fault(404, 'File not found');
-      filePath(path);
-      const s = sessions.get(clients.get(event.clientId) || clients.get(event.resultingClientId) || '');
-      if (!s) return new Response('Viewer session needs rebinding', { status: 503, headers: { 'X-HTPPT-Rebind': '1', 'Cache-Control': 'no-store' } });
-      if (s.hash !== match[1]) throw new Fault(403, 'Session cannot access this site');
-      if (event.resultingClientId) clients.set(event.resultingClientId, s.session);
-      const record = s.manifest.files.find(f => f.path === path);
-      if (!record) throw new Fault(404, 'File not found');
-      const key = `${sw.location.origin}/__verified/${VERSION}/${s.hash}/${path}`;
-      const cache = await caches.open(CONTENT);
-      const epoch = epochs.get(s.hash) || 0;
-      const cached = await cache.match(key);
-      let bytes: Uint8Array;
-      if (cached) bytes = new Uint8Array(await cached.arrayBuffer());
-      else {
-        const result = await read(s, path, event.request.signal);
-        if (result.status !== 200 || !result.bytes) throw new Fault(result.status || 503, result.error || 'Engine unavailable');
-        bytes = new Uint8Array(result.bytes);
+      const current = await authority();
+      const path = urlPath(url.pathname);
+      if (!path) {
+        const target = new URL(current.entrypoint.split('/').map(encodeURIComponent).join('/'), sw.location.origin + '/');
+        target.search = url.search;
+        return Response.redirect(target.href, 302);
       }
-      await verify(bytes, record);
-      if (!cached && epoch === (epochs.get(s.hash) || 0)) { try { await cache.put(key, new Response(bytes.slice().buffer)); } catch { /* UI durable store remains the source; quota does not block verified rendering. */ } }
-      const headers = { 'Content-Type': record.mime, 'Content-Length': String(bytes.length), 'Content-Security-Policy': contentPolicy(sw.location.origin, s.hash), 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-HTPPT-Cache': cached ? 'hit' : 'miss' };
-      // Range is intentionally answered with the verified full 200 response in v0.1.
+      filePath(path);
+      const record = current.files.find(f => f.path === path);
+      if (!record) throw new Fault(404, 'File not found');
+      const bytes = await file(path, event.request.signal);
+      const headers = { 'Content-Type': record.mime, 'Content-Length': String(bytes.length), 'Content-Security-Policy': policy, 'Cross-Origin-Opener-Policy': 'same-origin', 'Origin-Agent-Cluster': '?1', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
       return new Response(event.request.method === 'HEAD' ? null : bytes.slice().buffer, { status: 200, headers });
-    } catch (error) { return new Response(error instanceof Error ? error.message : 'Viewer failed', { status: error instanceof Fault ? error.status : 503, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } }); }
+    } catch (error) {
+      return new Response(error instanceof Error ? error.message : 'Viewer failed', { status: error instanceof Fault ? error.status : 503, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+    }
   })());
 });
