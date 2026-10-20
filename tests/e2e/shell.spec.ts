@@ -12,8 +12,8 @@ test('one frontend port selects isolated controller and viewer builds by hostnam
   const server = APP.replace(new URL(APP).hostname, '127.0.0.1');
   const get = (host: string, path: string) => request.get(server + path, { headers: { Host: new URL(host).host }, maxRedirects: 0 });
   const ui = await get(APP, '/index.html'), viewer = await get(VIEWER, '/__hppt/index.html');
-  expect(ui.status()).toBe(200); expect(await ui.text()).toContain('Web a társaktól');
-  expect(viewer.status()).toBe(200); expect(await viewer.text()).toContain('HPPT fájlkiszolgáló');
+  expect(ui.status()).toBe(200); expect(await ui.text()).toContain('The web, peer to peer');
+  expect(viewer.status()).toBe(200); expect(await viewer.text()).toContain('HPPT file server');
   expect(viewer.headers()['content-security-policy']).toContain(`frame-ancestors ${APP}`);
   expect(viewer.headers()['origin-agent-cluster']).toBe('?1');
   const worker = await get(VIEWER, '/__hppt/sw.js');
@@ -37,21 +37,21 @@ test('loopback alias redirects to the configured origin before publishing and op
   await page.waitForFunction(() => (window as any).htppt && navigator.serviceWorker.controller);
   await page.locator('#folder').setInputFiles(resolve('fixtures/hello-site'));
   await page.locator('#publish-button').click();
-  await expect(page.locator('#sites')).toContainText('Offline elérhető');
-  await page.locator('#sites button', { hasText: 'Megnyitás' }).click();
+  await expect(page.locator('#sites')).toContainText('Available offline');
+  await page.locator('#sites button', { hasText: 'Open' }).click();
   await expect(content(page).locator('h1')).toHaveText('Hello, peer!');
   expect(iceOrigins.length).toBeGreaterThan(0);
   expect((await Promise.all(iceOrigins)).every(origin => origin === APP)).toBe(true);
 });
 test('UI directory import offers index.html and creates an offline package', async ({ page }) => {
   await ready(page);
-  await expect(page).toHaveTitle('HPPT · Web a társaktól');
-  await expect(page.getByRole('link', { name: 'HPPT kezdőlap' })).toHaveText('hppt0.1');
+  await expect(page).toHaveTitle('HPPT · The web, peer to peer');
+  await expect(page.getByRole('link', { name: 'HPPT home' })).toHaveText('hppt0.1');
   await expect(page.locator('#uri')).toHaveAttribute('placeholder', 'web+hppt://…');
   await page.locator('#folder').setInputFiles(resolve('fixtures/hello-site'));
   await expect(page.locator('#entrypoint')).toHaveValue('index.html');
   await page.locator('#publish-button').click();
-  await expect(page.locator('#sites')).toContainText('Offline elérhető');
+  await expect(page.locator('#sites')).toContainText('Available offline');
   await expect(page.locator('#share-uri')).toHaveValue(/^web\+hppt:\/\/[a-f0-9]{40}$/);
 });
 test('complete UI, viewer and content restart offline after closing the browser and stopping all app servers', async () => {
@@ -61,7 +61,7 @@ test('complete UI, viewer and content restart offline after closing the browser 
     const page = await context.newPage(); await ready(page);
     const hash = await publish(page);
     await page.evaluate(() => (window as any).htppt.library());
-    await expect(page.locator('#sites')).toContainText('Offline elérhető');
+    await expect(page.locator('#sites')).toContainText('Available offline');
     await open(page, hash); await expect(content(page).locator('h1')).toHaveText('Hello, peer!');
     const savedViewerURL = content(page).url();
     await context.close(); await stop();
@@ -74,7 +74,7 @@ test('complete UI, viewer and content restart offline after closing the browser 
     await expect(standalone.locator('h1')).toHaveText('Hello, peer!');
     expect(standalone.frames()).toHaveLength(1);
     await standalone.locator('a').click();
-    await expect(standalone.locator('h1')).toHaveText('Relatív aloldal');
+    await expect(standalone.locator('h1')).toHaveText('Relative subpage');
     await standalone.close();
     const entry = await context.newPage();
     const network: string[] = [];
@@ -84,19 +84,19 @@ test('complete UI, viewer and content restart offline after closing the browser 
     await expect(entry.locator('h1')).toHaveText('Hello, peer!');
     expect(context.pages().filter(p => new URL(p.url()).origin === APP)).toHaveLength(0);
     expect(network).toEqual([]);
-    await entry.locator('#hello').click(); await expect(entry.locator('#result')).toContainText('JavaScript működik');
+    await entry.locator('#hello').click(); await expect(entry.locator('#result')).toContainText('JavaScript works');
     await entry.close();
     const offline = await context.newPage();
     trackViewers(offline);
     await offline.goto(APP);
     await offline.waitForFunction(() => (window as any).htppt && navigator.serviceWorker.controller);
-    await expect(offline.locator('h1')).toContainText('Adj otthont egy oldalnak');
-    await expect(offline.locator('#sites')).toContainText('Offline elérhető');
+    await expect(offline.locator('h1')).toContainText('Host a site');
+    await expect(offline.locator('#sites')).toContainText('Available offline');
     expect(await offline.evaluate(async hash => new TextDecoder().decode((await (window as any).htppt.engine.readFile(hash, 'index.html')).bytes), hash)).toContain('Hello, peer!');
     await open(offline, hash);
     await expect(content(offline).locator('h1')).toHaveText('Hello, peer!');
-    await content(offline).locator('#hello').click(); await expect(content(offline).locator('#result')).toContainText('JavaScript működik');
-    await content(offline).locator('a').click(); await expect(content(offline).locator('h1')).toHaveText('Relatív aloldal');
+    await content(offline).locator('#hello').click(); await expect(content(offline).locator('#result')).toContainText('JavaScript works');
+    await content(offline).locator('a').click(); await expect(content(offline).locator('h1')).toHaveText('Relative subpage');
     await expect(content(offline).locator('body')).toHaveCSS('background-color', 'rgb(242, 245, 233)');
   } finally { await context.close(); await rm(profile, { recursive: true, force: true }); await start(); }
 });

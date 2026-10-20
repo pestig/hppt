@@ -9,11 +9,11 @@ const session = params.get('session') || '', nonce = params.get('nonce') || '';
 let hash = '';
 try { hash = originHash(location.origin); } catch { /* The base host is an informational landing page. */ }
 if (!hash || !session || !nonce || parent === window) {
-  status.textContent = 'A HPPT viewer oldalanként külön originen fut. Nyisd meg az oldalt a HPPT alkalmazásból.';
-  const link = document.createElement('a'); link.href = config.appOrigin; link.textContent = 'HPPT megnyitása'; document.body.append(link);
+  status.textContent = 'The HPPT viewer uses a separate origin for each site. Open the site from the HPPT app.';
+  const link = document.createElement('a'); link.href = config.appOrigin; link.textContent = 'Open HPPT'; document.body.append(link);
 } else {
   if (document.hasStorageAccess && !await document.hasStorageAccess()) {
-    const text = 'A viewer és a HPPT alkalmazás külön originen, de azonos schemeful site-on fusson; a böngésző elkülönítette a helper tárhelyét.';
+    const text = 'The viewer and HPPT app must use separate origins within the same schemeful site; the browser has partitioned the helper storage.';
     parent.postMessage({ type: 'viewer-status', version: VERSION, nonce, session, hash, state: 'error', text, uri: '' }, config.appOrigin);
     throw new Error(text);
   }
@@ -53,7 +53,7 @@ if (!hash || !session || !nonce || parent === window) {
       await command({ ...parsed.data, proof }, [event.ports[0]]);
       if (params.get('pin') === '1') await command({ type: 'pin', version: VERSION, nonce, session, hash });
       waiting = false;
-      parent.postMessage({ type: 'viewer-status', version: VERSION, nonce, session, hash, state: 'loaded', text: 'Viewer előkészítve.', uri: `web+hppt://${hash}` }, config.appOrigin);
+      parent.postMessage({ type: 'viewer-status', version: VERSION, nonce, session, hash, state: 'loaded', text: 'Viewer prepared.', uri: `web+hppt://${hash}` }, config.appOrigin);
     })().catch(error => {
       waiting = false;
       parent.postMessage({ type: 'viewer-status', version: VERSION, nonce, session, hash, state: 'error', text: error.message, uri: '' }, config.appOrigin);

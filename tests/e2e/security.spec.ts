@@ -41,7 +41,7 @@ test('wrong origin, source, nonce, session, hash and protocol cannot replace a b
   const a = await fresh(browser), hash = await publish(a.page); await open(a.page, hash);
   await expect(content(a.page).locator('h1')).toHaveText('Hello, peer!');
   await a.page.evaluate(() => {
-    const frame = document.querySelector<HTMLIFrameElement>('iframe[title="HPPT fájlkiszolgáló"]')!;
+    const frame = document.querySelector<HTMLIFrameElement>('iframe[title="HPPT file server"]')!;
     const values = Object.fromEntries(new URLSearchParams(new URL(frame.src).hash.slice(1)));
     const base = { type: 'init', version: 'htppt/0.1', session: values.session, nonce: values.nonce, hash: values.hash, proof: {} };
     for (const change of [{ nonce: crypto.randomUUID() }, { session: crypto.randomUUID() }, { hash: 'b'.repeat(40) }, { version: 'htppt/9' }]) {
@@ -54,7 +54,7 @@ test('wrong origin, source, nonce, session, hash and protocol cannot replace a b
     const data = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
     window.postMessage({ type: 'init', version: 'htppt/0.1', nonce: data.nonce, session: data.session, hash: data.hash, proof: {} }, location.origin);
   });
-  await content(a.page).locator('a').click(); await expect(content(a.page).locator('h1')).toHaveText('Relatív aloldal');
+  await content(a.page).locator('a').click(); await expect(content(a.page).locator('h1')).toHaveText('Relative subpage');
   await expect(a.page.locator('#status')).not.toContainText('forged-success'); await a.context.close();
 });
 
@@ -69,8 +69,8 @@ test('UI storage quota failure never grants offline availability', async ({ brow
   });
   await open(b.page, hash); await expect(content(b.page).locator('h1')).toHaveText('Hello, peer!');
   await b.page.locator('#pin-current').click(); await expect(b.page.locator('#status')).toContainText('quota');
-  await expect(b.page.locator('#sites')).not.toContainText('Offline elérhető');
-  await content(b.page).locator('#hello').click(); await expect(content(b.page).locator('#result')).toContainText('JavaScript működik');
+  await expect(b.page.locator('#sites')).not.toContainText('Available offline');
+  await content(b.page).locator('#hello').click(); await expect(content(b.page).locator('#result')).toContainText('JavaScript works');
   await a.context.close(); await b.context.close();
 });
 
@@ -78,8 +78,8 @@ test('cache deletion clears the site origin and durable files while preserving i
   const a = await fresh(browser), hash = await publish(a.page);
   await a.page.evaluate(() => (window as any).htppt.library()); await open(a.page, hash); const viewer = content(a.page);
   await expect(viewer.locator('h1')).toHaveText('Hello, peer!');
-  await a.page.locator('#sites button', { hasText: 'Cache törlése' }).click();
-  await expect(a.page.locator('#status')).toContainText('viewer cache-e törölve');
+  await a.page.locator('#sites button', { hasText: 'Clear cache' }).click();
+  await expect(a.page.locator('#status')).toContainText('viewer cache cleared');
   await expect(a.page.locator('#sites')).not.toContainText(hash);
   expect(await viewer.evaluate(async () => (await fetch('/index.html')).status)).toBe(503);
   expect(await viewer.evaluate(async () => (await caches.keys()).some(k => k.startsWith('htppt-shell-viewer-')))).toBe(true);
@@ -162,10 +162,10 @@ test('viewer persistence failure removes offline availability and can be retried
   });
   await viewer.evaluate(async () => (await caches.open('hppt-site-files-v1')).delete('/__hppt/verified/pages/about.html'));
   await a.page.locator('#refresh-library').click();
-  await expect(a.page.locator('#sites')).not.toContainText('Offline elérhető');
-  await expect(a.page.locator('#sites')).toContainText('viewer előkészítése szükséges');
-  await viewer.locator('a').click(); await expect(viewer.locator('h1')).toHaveText('Relatív aloldal');
+  await expect(a.page.locator('#sites')).not.toContainText('Available offline');
+  await expect(a.page.locator('#sites')).toContainText('viewer preparation required');
+  await viewer.locator('a').click(); await expect(viewer.locator('h1')).toHaveText('Relative subpage');
   await worker.evaluate(() => { Cache.prototype.put = (self as any).originalCachePut; });
-  await a.page.locator('#refresh-library').click(); await expect(a.page.locator('#sites')).toContainText('Offline elérhető');
+  await a.page.locator('#refresh-library').click(); await expect(a.page.locator('#sites')).toContainText('Available offline');
   await a.context.close();
 });

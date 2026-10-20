@@ -10,14 +10,14 @@ export function createSiteBridge(config: Config, hash: string, proof: AuthorityP
   offline = false, onDispose = () => {}) {
   const origin = siteOrigin(config.viewerOrigin, hash);
   const session = crypto.randomUUID(), nonce = crypto.randomUUID();
-  const frame = document.createElement('iframe'); frame.hidden = true; frame.title = 'HPPT fájlkiszolgáló';
+  const frame = document.createElement('iframe'); frame.hidden = true; frame.title = 'HPPT file server';
   frame.src = `${origin}${VIEWER_BOOT}#${new URLSearchParams({ session, nonce, hash, pin: offline ? '1' : '0' })}`;
   let stopPort: (() => void) | undefined;
   let listener: (event: MessageEvent) => void;
   let timer: ReturnType<typeof setTimeout>;
   const dispose = () => { clearTimeout(timer); window.removeEventListener('message', listener); stopPort?.(); frame.remove(); onDispose(); };
   const ready = new Promise<void>((resolve, reject) => {
-    timer = setTimeout(() => { dispose(); reject(new Error('A viewer előkészítése nem sikerült. Ellenőrizd a viewer címet és a böngésző tárhelyengedélyeit.')); }, 60000);
+    timer = setTimeout(() => { dispose(); reject(new Error('Viewer preparation failed. Check the viewer address and browser storage permissions.')); }, 60000);
     listener = (event: MessageEvent) => {
       if (event.origin !== origin || event.source !== frame.contentWindow) return;
       const hello = Hello.safeParse(event.data);

@@ -37,7 +37,7 @@ test('stopping TURN disconnects existing peers and prevents new relay-only conne
     const client = (window as any).htppt.engine.client;
     return client.torrents.every((t: any) => [...(t._peers?.values() || [])].every((p: any) => !p.conn?._pc || ['disconnected', 'failed', 'closed'].includes(p.conn._pc.connectionState)));
   }), { timeout: 45000 }).toBe(true);
-  await b.page.locator('#refresh-library').click(); await expect(b.page.locator('#sites')).toContainText('Offline elérhető');
+  await b.page.locator('#refresh-library').click(); await expect(b.page.locator('#sites')).toContainText('Available offline');
   await a.context.close(); await b.context.close(); await c.context.close(); await startTurn();
 });
 

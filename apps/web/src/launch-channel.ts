@@ -23,7 +23,7 @@ export function serveLaunches(prepare: (uri: string) => Promise<string>) {
     const data = parsed.data;
     if (data.type === 'discover') channel.postMessage({ type: 'available', request: data.request, controller });
     if (data.type !== 'prepare' || data.controller !== controller || pending.has(data.request)) return;
-    if (pending.size >= 8) { channel.postMessage({ type: 'failed', request: data.request, controller, error: 'Túl sok párhuzamos megnyitás. Próbáld újra.' }); return; }
+    if (pending.size >= 8) { channel.postMessage({ type: 'failed', request: data.request, controller, error: 'Too many concurrent open requests. Try again.' }); return; }
     pending.add(data.request);
     void (async () => {
       try {
@@ -31,7 +31,7 @@ export function serveLaunches(prepare: (uri: string) => Promise<string>) {
         const uri = await prepare(data.uri);
         if (!closed) channel.postMessage({ type: 'prepared', request: data.request, controller, uri });
       } catch (error) {
-        if (!closed) channel.postMessage({ type: 'failed', request: data.request, controller, error: error instanceof Error ? error.message : 'A megnyitás sikertelen.' });
+        if (!closed) channel.postMessage({ type: 'failed', request: data.request, controller, error: error instanceof Error ? error.message : 'Failed to open.' });
       } finally { pending.delete(data.request); }
     })();
   };

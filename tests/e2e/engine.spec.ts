@@ -40,7 +40,7 @@ test('durable corruption is rejected and partial storage never receives the offl
   }, hash);
   await expect(a.page.evaluate(hash => (window as any).htppt.engine.readFile(hash, 'index.html'), hash)).rejects.toThrow('Integrity');
   await a.page.evaluate(() => (window as any).htppt.library());
-  await expect(a.page.locator('#sites')).not.toContainText('Offline elérhető');
+  await expect(a.page.locator('#sites')).not.toContainText('Available offline');
   await a.context.close();
 });
 

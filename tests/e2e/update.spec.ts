@@ -73,9 +73,9 @@ test('a cached legacy app reloads on upgrade and retains its saved package', asy
   await expect(page.locator('h1')).toHaveText('Legacy cached application');
   await update();
   await expect(page.locator('#sites')).toContainText(hash);
-  await expect(page.locator('#sites')).toContainText('Offline elérhető');
+  await expect(page.locator('#sites')).toContainText('Available offline');
   await expect(page).toHaveURL(`${APP}/open?source=upgrade#library`);
-  await page.locator('#sites button', { hasText: 'Megnyitás' }).click();
+  await page.locator('#sites button', { hasText: 'Open' }).click();
   await expect(content(page).locator('h1')).toHaveText('Hello, peer!');
 });
 
@@ -91,6 +91,6 @@ test('a cached legacy app on the loopback alias upgrades and redirects to APP_OR
   const hash = await publish(page);
   await page.evaluate(() => (window as any).htppt.library());
   await expect(page.locator('#sites')).toContainText(hash);
-  await page.locator('#sites button', { hasText: 'Megnyitás' }).click();
+  await page.locator('#sites button', { hasText: 'Open' }).click();
   await expect(content(page).locator('h1')).toHaveText('Hello, peer!');
 });

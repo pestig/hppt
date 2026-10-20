@@ -19,7 +19,7 @@ test('a separate viewer window receives original P2P HTML, CSS, image and JavaSc
     await expect(viewer).toHaveURL(`${siteOrigin(VIEWER, hash)}/index.html`);
     await expect(viewer.locator('body')).toHaveCSS('background-color', 'rgb(242, 245, 233)');
     expect(await viewer.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
-    await viewer.locator('#hello').click(); await expect(viewer.locator('#result')).toContainText('JavaScript működik');
+    await viewer.locator('#hello').click(); await expect(viewer.locator('#result')).toContainText('JavaScript works');
     const original = await a.page.evaluate(async hash => [...(await (window as any).htppt.engine.readFile(hash, 'index.html')).bytes], hash);
     expect(await viewer.evaluate(async () => [...new Uint8Array(await (await fetch(location.href)).arrayBuffer())])).toEqual(original);
     expect(await viewer.evaluate(() => window.opener)).toBeNull();
@@ -82,7 +82,7 @@ test('a stopped worker reconnects to the open app for an uncached file', async (
   await expect(viewer.locator('h1')).toHaveText('Hello, peer!');
   await viewer.evaluate(async () => (await caches.open('hppt-site-files-v1')).delete('/__hppt/verified/pages/about.html'));
   const cdp = await a.context.newCDPSession(viewer); await cdp.send('ServiceWorker.enable'); await cdp.send('ServiceWorker.stopAllWorkers');
-  await viewer.locator('a').click(); await expect(viewer.locator('h1')).toHaveText('Relatív aloldal');
+  await viewer.locator('a').click(); await expect(viewer.locator('h1')).toHaveText('Relative subpage');
   await a.page.reload(); await a.page.waitForFunction(() => (window as any).htppt && navigator.serviceWorker.controller);
   await open(a.page, hash); await expect(content(a.page).locator('h1')).toHaveText('Hello, peer!');
   await a.context.close();
@@ -101,7 +101,7 @@ test('updating a site worker retains native content and its isolated origin', as
     const helper = a.page.frames().find(f => new URL(f.url()).origin === siteOrigin(VIEWER, hash))!;
     await helper.evaluate(async () => { await (await navigator.serviceWorker.getRegistration())!.update(); });
     await expect.poll(() => viewer.evaluate(() => caches.keys())).toContain(version);
-    await viewer.locator('a').click(); await expect(viewer.locator('h1')).toHaveText('Relatív aloldal');
+    await viewer.locator('a').click(); await expect(viewer.locator('h1')).toHaveText('Relative subpage');
     expect(await viewer.evaluate(() => location.origin)).toBe(siteOrigin(VIEWER, hash));
   } finally { await writeFile(path, source); await a.context.close(); }
 });
@@ -122,7 +122,7 @@ test('blocked popups leave a working explicit link to the prepared site', async 
   await ready(page); const hash = await publish(page);
   await page.evaluate(() => { window.open = () => null; });
   await page.locator('#uri').fill(`web+hppt://${hash}`); await page.locator('#open-button').click();
-  await expect(page.locator('#status')).toContainText('kattints');
+  await expect(page.locator('#status')).toContainText('click');
   await expect(page.locator('#viewer-link')).toHaveAttribute('href', `${siteOrigin(VIEWER, hash)}/index.html`);
   const opened = context.waitForEvent('page'); await page.locator('#viewer-link').click(); const viewer = await opened;
   await expect(viewer.locator('h1')).toHaveText('Hello, peer!'); expect(viewer.frames()).toHaveLength(1);

@@ -1,61 +1,62 @@
-# Megvalósítási jegyzőkönyv
+# Implementation report
 
-Az oldalankénti originre és külön böngészőablakokra épülő HPPT viewer megvalósult; az eredeti fájlokat a saját Service Worker szolgálja ki. A végső regresszióellenőrzések eredménye alább szerepel. Dátum: 2026-10-19. Publikus production telepítés és távoli CI-futtatás nem történt.
+The HPPT viewer now uses a separate origin and browser window for each site, with original files served by the site’s own Service Worker. Final regression results are recorded below. Date: 2026-10-19. No public production deployment or remote CI run was performed.
 
-A frontend-kiszolgálás egyetlen Vite preview folyamatra és az 5173-as portra került. A két célzott build megmaradt; hosztnév szerinti routing választja ki a vezérlőt vagy a csak engedélyezett bootstrapfájlokat kiszolgáló viewer handlert. A régi helyi viewer-portot a konfiguráció az alkalmazás portjára igazítja. A UI originje és IndexedDB-je megmarad, a viewer új originjének offline cache-ét a könyvtárfrissítés készíti elő.
-## Ellenőrzött működés
+Frontend serving now uses a single Vite preview process on port 5173. Two focused builds remain; hostname routing selects either the controller or a viewer handler that serves only allowlisted bootstrap files. Configuration normalizes the old local viewer port to the app port. The UI origin and IndexedDB are retained; refreshing the library prepares offline caches on the new viewer origins.
 
-Valódi WebRTC adatátvitel működik két elkülönített Chromium-profil között; az eredeti publikáló bezárása után tiszta harmadik profil B-től tölt le. A pinelt csomag újratöltés után valóban újra seedel, újraépített darabtárral és infoHash-ellenőrzéssel. A HTTP-hostok nem szolgálják ki a fixture payloadot.
+## Verified behavior
 
-Minden csomag külön `<infoHash>.hppt.localhost:5173` originen, önálló böngészőlapon fut. A saját worker változatlan fájlbytes tartalmat ad vissza, a böngésző natívan tölti be a relatív erőforrásokat. A WebRTC a nyitott HPPT alkalmazásban marad; rejtett, oldalankénti helper és dedikált MessagePort köti össze a workerrel. Megjelenítő iframe, HTML/CSS-átírás és data URL-es csomagolás nincs. A tartalom saját originjének storage-át használhatja. A CSP külső erőforrást, workert, frame-et és űrlapot tilt; a COOP leválasztja az opener kapcsolatot, az Origin-Agent-Cluster megakadályozza a document.domain alapú összevonást.
+Real WebRTC transfer works between two isolated Chromium profiles. After the original publisher closes, a fresh third profile downloads from B. Pinned packages genuinely resume seeding after reload, with a rebuilt piece store and infoHash verification. HTTP hosts do not serve fixture payloads.
 
-A protokollkezelő `/open?uri=…` belépési lapja saját magát navigálja a viewer-címre. A launcher külön betöltött modul; helyi csomaghoz nem példányosít P2P engine-t, SHA-256- és torrentbizonyíték-ellenőrzéssel előkészíti a teljes tartós viewer-cache-t. Letöltéskor az alkalmazás originjén futó BroadcastChannelen kér előkészítést egy már nyitott vezérlőtől, vagy külön alkalmazáslapot indít. Blokkolt ablaknyitásnál kézzel kattintható indítógomb jelenik meg. A válasz azonosított kéréshez és kiválasztott vezérlőhöz kötött; a launcher ellenőrzi a hash-t, az explicit útvonalat, queryt és fragmentet, és csak a konfigurált viewer origint állítja elő. A vezérlő UI hagyományos megnyitógombja továbbra is külön viewer-lapot nyit.
+Each package runs on its own `<infoHash>.hppt.localhost:5173` origin in a separate browser tab. Its worker returns unchanged file bytes, and the browser loads relative resources natively. WebRTC stays in the open HPPT app; a hidden helper for each site and a dedicated MessagePort connect it to the worker. There is no display iframe, HTML/CSS rewriting, or data URL packaging. Content can use storage on its own origin. CSP blocks external resources, workers, frames, and forms; COOP detaches the opener connection, and Origin-Agent-Cluster prevents origins from being merged through document.domain.
 
-A közvetlen viewer-link első megnyitása friss profilban navigációs 302-vel ugyanezt a launchert indítja, majd visszatér az eredeti viewer-címre. Korábban ez az útvonal 503-at adott akkor is, ha az alkalmazás már nyitva volt. Három új, valódi P2P-s böngészőteszt ellenőrzi az elkülönített profilban nyitott alkalmazás megtalálását, az eredeti query/fragment megőrzését, a gyökérútvonal entrypoint-feloldását és az explicit hiányzó fájl elutasítását. A hálózati naplóban az első válasz 302, a HTML 200-as válasza már Service Workerből jön. A közönséges HTTP fájlkérés továbbra is 503.
+The protocol handler’s `/open?uri=…` entry page navigates itself to the viewer address. The launcher is loaded as a separate module. For local packages it creates no P2P engine, preparing the complete persistent viewer cache with SHA-256 and torrent-proof verification. Downloads request preparation from an already open controller through a BroadcastChannel on the app origin, or start a separate app tab. If popup blocking prevents this, a clickable start button appears. Responses are bound to a request ID and selected controller; the launcher checks the hash, explicit path, query, and fragment, generating only the configured viewer origin. The controller UI’s regular opening button still opens a separate viewer tab.
 
-Működik a nem `index.html` kezdőoldal, a relatív CSS/kép/script, a CSS import és háttérkép, a relatív aloldal, az ES-modul és import, a body/html attribútumok, a valós window.location és az ugyanazon originre mutató fetch. A query és fragment a viewer valódi URL-jében marad meg. Explicit hiányzó útvonalra 404 jár. Sok erőforrás betöltése legfeljebb hat egyidejű olvasással történik, a bridge 32-es pending korlátja alatt.
+Opening a direct viewer link for the first time in a fresh profile starts the same launcher through a navigation-only 302 redirect, then returns to the original viewer address. Previously this route returned 503 even when the app was already open. Three new browser tests using real P2P check discovery of the app in an isolated profile, preservation of the original query/fragment, entrypoint resolution for a root path, and rejection of an explicit missing file. In the network log, the first response is 302; the HTML’s 200 response then comes from the Service Worker. Ordinary HTTP file requests still return 503.
 
-A UI saját SW-je és a viewer saját SW-je is cache-eli az indításhoz szükséges fájlokat. Az offline teszt nem csupán hálózatot kapcsol: bezárja az egész tartós Chromium-profilt, leállítja mindhárom alkalmazásszervert, megnyitja ugyanazt a megőrzött profilt, letiltja a hálózatot és újranyitja az alkalmazás címét. Először közvetlenül a csomag saját címét nyitja meg, vezérlőablak nélkül: a HTML/CSS/kép/JS/aloldal működik. Utána a belépési link ugyanazon lapon történő átirányítását, végül a UI-ból történő offline megnyitást is ellenőrzi. Nincs tracker-, ICE API- vagy hitelesítésvárakozás a helyi tartalom előtt. A viewer shell előkészítése az „Offline elérhető” állapot előfeltétele.
+Supported features include entry files other than `index.html`, relative CSS/images/scripts, CSS imports and background images, relative subpages, ES modules and imports, body/html attributes, real window.location, and same-origin fetch. Query and fragment remain in the viewer’s actual URL. Explicit missing paths return 404. Loading many resources uses at most six concurrent reads, below the bridge’s limit of 32 pending requests.
 
-Cache-törléskor a vezérlő tartós példánya és az adott csomag originjének fájljai/bizonyítéka törlődik; a bootstrap cache megmarad. A sérült fájl nem renderelődik. A manifestet az eredeti torrent infoHash-hez és a manifestet tartalmazó torrentdarabokhoz kötött bizonyíték hitelesíti. A site saját Cache Storage-ából származó hamisított fájl és újraindulás után a hamisított manifestbizonyíték is elutasításra kerül. UI- és viewer-kvótahiba nem eredményez offline állapotot; a viewer tartós fájljait könyvtárfrissítéskor újra ellenőrizzük. Az alkalmazás bridge-ének leválasztása megszakítja a pending olvasást. Worker-újraindulás után egy hiányzó fájl ismét a nyitott alkalmazástól kérhető.
+Both the UI and viewer Service Workers cache the files needed for startup. The offline test goes beyond disabling the network: it closes the entire persistent Chromium profile, stops all three application servers, reopens the same retained profile, disables networking, and reopens the app address. It first opens the package’s own address directly, without a controller window: HTML/CSS/images/JS/subpages work. It then checks the launch link’s same-tab redirect and, finally, offline opening from the UI. Local content does not wait for the tracker, ICE API, or authentication. Preparing the viewer shell is a prerequisite for the “Available offline” status.
 
-## Tesztek és eredmények
+Clearing the cache removes the controller’s persistent copy and the files/proof on that package’s origin, while retaining the bootstrap cache. Corrupt files do not render. The manifest is authenticated by a proof bound to the original torrent infoHash and the torrent pieces containing the manifest. Forged files from the site’s own Cache Storage are rejected, as are forged manifest proofs after a worker restart. UI or viewer quota errors never produce an offline status; persistent viewer files are verified again when the library refreshes. Disconnecting the app bridge aborts pending reads. After a worker restart, a missing file can once again be requested from the open app.
 
-| Parancs | Eredmény |
+## Tests and results
+
+| Command | Result |
 |---|---|
-| `npm ci` | Sikeres, lockfile alapján |
-| `npm run lint` | Sikeres |
-| `npm run typecheck` | Sikeres, strict TypeScript |
-| `npm run test:unit` | 32 sikeres protokoll-, torrentbizonyíték-, origin-, bridge- és valódi ICE API-teszt |
-| `npm run build` | Mindkét alkalmazás sikeresen buildel |
-| `npm run test:e2e` | 36 sikeres; 4 relay eset külön jobban, 0 hibás a végső futásban; kilépési kód 0 |
-| `npm run test:relay` | Korábbi viewer-átalakításkor 4 sikeres, saját coturnnal és valódi WebRTC-vel; a protokollkezelő- és egyportos frontend-változtatáskor nem ismételve |
-| Docker tracker / ICE API | A meglévő tracker működik; az új origin-normalizáló modullal az ICE API újraépítése és indítása sikeres |
-| `setup:dev`, `infra:up`, `infra:logs`, `infra:down` | Sikeres; az ismételt setup megőrizte a meglévő konfigurációt és credentialt |
-| `npm run doctor` | Node 24, mindkét HTTP-origin, közös frontend-port, origin-elkülönítés, ICE API és tracker WS sikeres |
+| `npm ci` | Passed, using the lockfile |
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed, strict TypeScript |
+| `npm run test:unit` | 32 passed: protocol, torrent proof, origins, bridge, and real ICE API tests |
+| `npm run build` | Both apps build successfully |
+| `npm run test:e2e` | 36 passed; 4 relay cases belong to a separate job; 0 failures in the final run; exit code 0 |
+| `npm run test:relay` | 4 passed during the earlier viewer refactor, using a dedicated coturn and real WebRTC; not repeated for the protocol-handler or single-port frontend changes |
+| Docker tracker / ICE API | Existing tracker works; ICE API rebuilt and started successfully with the new origin-normalization module |
+| `setup:dev`, `infra:up`, `infra:logs`, `infra:down` | Passed; repeated setup preserved existing configuration and credentials |
+| `npm run doctor` | Passed: Node 24, both HTTP origins, shared frontend port, origin isolation, ICE API, and tracker WebSocket |
 
-A teljes normál e2e suite 36 esetet futtat, köztük a közös port hosztnév szerinti routingját és nyolc protokoll- és közvetlen viewer-belépési tesztet: helyi csomag vezérlő és hálózati kliens nélkül, élő vezérlő újrahasználata valódi P2P-letöltéssel, blokkolt ablaknyitás kézi indítása, automatikus vezérlőindítás, hibás cím és explicit hiányzó fájl, valamint közvetlen viewer-link friss profilban, gyökérútvonal és közvetlen hiányzó fájl. A tényleges 5173-as frontend-porton a `fixtures/sample-site` publikálása és külön profilból közvetlen megnyitása is sikeres volt; a HTML/CSS/JS működött, az eredeti URL megmaradt, az alkalmazás és a viewer két külön lapon maradt. Nem történt 5174-es kérés, és azon a porton nem maradt listener. A 4 relay eset külön jobba tartozik. A relay kihagyása a normál suite-ban nem relay-minősítés. A relay saját szervert indít és tényleges átvitel hiányakor hibázik; hiányzó környezetből nem lesz hamis siker.
+The full normal end-to-end suite runs 36 cases, including hostname routing on the shared port and eight protocol-handler/direct-viewer entry tests: a local package without a controller or network client; reuse of a live controller for a real P2P download; manual launch after popup blocking; automatic controller launch; invalid addresses and explicit missing files; and direct viewer links in fresh profiles, root paths, and direct missing files. Publishing `fixtures/sample-site` and opening its direct link from a separate profile also passed on the actual frontend port 5173. HTML/CSS/JS worked, the original URL was preserved, and the app and viewer remained in separate tabs. There were no requests to port 5174, and no listener remained there. The four relay cases belong to a separate job. Skipping relay in the normal suite does not validate it. Relay tests start their own server and fail without actual transfer; a missing environment cannot produce a false pass.
 
-Az egyportos változtatás első teljes futásában a seederhiány utáni P2P-újrapróbálás egyszer kapcsolati időtúllépést kapott. Ugyanaz az eset két külön ismétlésben, majd a végső teljes futásban is sikeres volt. A transport kódját és a timeout elvárását nem módosítottuk.
+During the first full run of the single-port change, the P2P retry after a missing seeder timed out once. The same case passed in two separate repetitions and in the final full run. Neither transport code nor timeout expectations were changed.
 
-A relay tesztek feltételei:
+Relay test requirements:
 
-- Mindkét peer `iceTransportPolicy: relay`, kiválasztott relay/relay candidate pair és tényleges datachannel byte-ok.
-- Hibás TURN credential mellett friss kapcsolat elbukik, direkt fallback nincs.
-- TURN leállításakor az élő kapcsolat megszakadása kezelhető, új relay-only kapcsolat nem működik, a helyben mentett csomag továbbra is elérhető.
-- Rövid életű, valós TURN REST credential lejáratakor új peer nem tud allokálni. Friss credentialdel ismét működik a kapcsolat; a korábban működő PC-t a kliens credentialfrissítése nem bontja szándékosan.
+- Both peers use `iceTransportPolicy: relay`, with a selected relay/relay candidate pair and actual datachannel bytes.
+- An invalid TURN credential causes a fresh connection to fail without direct fallback.
+- Stopping TURN handles the live connection’s interruption; new relay-only connections fail, while locally saved packages remain available.
+- After a short-lived, real TURN REST credential expires, a new peer cannot allocate. Fresh credentials restore connectivity; client credential refresh does not intentionally close an already working peer connection.
 
-A credentialteszt valós coturn REST authot használ. A rövid TTL és a hibás credential kizárólag tesztfixture: a production ellenőrzés nincs kikapcsolva. A hitelesítő gatewayt a böngészős tesztek hálózati fixture-je modellezi, az ICE API production hitelesítését és HMAC-képzését valódi API-kérések ellenőrzik. Többórás TURN allocation-élettartamot, éles TLS-t és globális internetes NAT-topológiákat ez nem minősít.
+Credential tests use real coturn REST authentication. Short TTLs and invalid credentials are test fixtures only; production verification stays enabled. Browser tests model the authentication gateway through a network fixture, while real API requests verify production ICE API authentication and HMAC generation. These tests do not validate multi-hour TURN allocations, live TLS, or global internet NAT topologies.
 
-A böngészős tesztek saját portjai: frontend 5273 (UI és viewer), tracker 8100, ICE API 3101. A relay TURN listener 3488, a relay UDP-tartomány 49500–49620. Minden teszthez véges timeout tartozik, a saját folyamatok és ideiglenes credentialfájlok takarítása megtörténik. A Playwright trace kikapcsolt, mert a hálózati választestek TURN credentialt is rögzítenének.
+Browser tests use their own ports: frontend 5273 (UI and viewer), tracker 8100, and ICE API 3101. The relay TURN listener uses 3488, with relay UDP ports 49500–49620. Every test has a finite timeout, and test processes and temporary credential files are cleaned up. Playwright tracing is disabled because network response bodies would also record TURN credentials.
 
-## Környezet és reprodukálás
+## Environment and reproduction
 
-Node 24.19.0, npm 11.17.0, Docker Desktop 29.8.2 / Compose 5.6.0 alatt történt a munka. A Docker Desktop portmapping mellett relay candidate létrejött, működő UDP-adatút nem; a Desktop virtuális gép host hálózata sem azonos a böngésző Linux hálózatával. A sikeres TURN tesztek a hivatalos coturn 4.7.0 képből kiemelt binárissal, saját natív Linux-folyamattal futottak. Ez nem bizonyítja a Docker Desktop TURN-adatút működését.
+Development used Node 24.19.0, npm 11.17.0, and Docker Desktop 29.8.2 / Compose 5.6.0. Docker Desktop port mapping produced relay candidates but no working UDP data path; the Desktop VM’s host network also differs from the browser’s Linux network. Successful TURN tests used a binary extracted from the official coturn 4.7.0 image, running as a dedicated native Linux process. This does not demonstrate a working Docker Desktop TURN data path.
 
-Az `infra:up` valódi Linux Engine-nél automatikusan a `compose.linux.yaml` kiegészítést választja; explicit `COMPOSE_FILE` felülírhatja ezt. A coturn csak olvasható, 0600 jogosultságú saját dev-konfigurációt kap, a helyi UID/GID alatt fut, és olvashatatlan config mellett nem indul tovább alapértelmezett beállítással. A localhostos dev-config loopback peer-kivételét productionban nem szabad átvenni.
+With a native Linux Engine, `infra:up` automatically selects the `compose.linux.yaml` override; explicit `COMPOSE_FILE` can override this. Coturn receives its own read-only development configuration with mode 0600, runs as the local UID/GID, and refuses to continue with defaults if the configuration is unreadable. The localhost development configuration’s loopback-peer exception must not be copied into production.
 
-A környezetben hiányzó Chromium-rendszerkönyvtárakat a hivatalos Playwright-képből másoltuk `/tmp` alá, hálózat és projektcsatolás nélküli konténerből. A normál telepítéshez `npx playwright install --with-deps chromium` használható. Ebben a munkamenetben:
+Missing Chromium system libraries were copied into `/tmp` from the official Playwright image, using a container without networking or a project mount. For a normal installation, use `npx playwright install --with-deps chromium`. In this session:
 
 ```sh
 LD_LIBRARY_PATH=/tmp/htppt-browser-runtime npm run test:e2e
@@ -65,36 +66,36 @@ LD_LIBRARY_PATH=/tmp/htppt-browser-runtime \
   npm run test:relay
 ```
 
-A `/tmp`-fájlok nem projektfüggőségek. Telepített natív coturn esetén elegendő `TURNSERVER_BIN=/usr/bin/turnserver npm run test:relay`. Linux Docker Engine esetén a relay suite saját, pinelt coturn-konténert használ, csak a saját ideiglenes konfigurációját csatolja. A CI workflow a normál teszteket és a valódi relay suite-ot külön jobban futtatja.
+The `/tmp` files are not project dependencies. With native coturn installed, `TURNSERVER_BIN=/usr/bin/turnserver npm run test:relay` is sufficient. On Linux Docker Engine, the relay suite uses its own pinned coturn container, mounting only its temporary configuration. The CI workflow runs normal tests and the real relay suite in separate jobs.
 
-## Verziók és API-döntések
+## Versions and API decisions
 
-| Összetevő | Verzió |
+| Component | Version |
 |---|---|
 | Node / npm | 24.19.0 / 11.17.0 |
 | TypeScript | 5.9.3 |
 | Vite / Vitest | 8.3.4 / 5.0.5 |
 | Playwright / Chromium | 1.64.1 / 156.0.8078.4 |
-| WebTorrent | 3.0.21, hivatalos böngészős ESM build |
+| WebTorrent | 3.0.21, official browser ESM build |
 | bittorrent-tracker | 11.2.3 |
 | coturn | 4.7.0 |
 
-A [WebTorrent dokumentáció](https://webtorrent.io/docs) és telepített forrás szerint az ICE-konfiguráció útja: `new WebTorrent({ tracker: { rtcConfig: { iceServers, iceTransportPolicy } } })` → discovery → tracker → simple-peer → `RTCPeerConnection`. A tracker callback legfeljebb két spekulatív offert kér; ez korlátozza az üres TURN allokációk számát a kis fejlesztői tartományban.
+According to the [WebTorrent documentation](https://webtorrent.io/docs) and installed source, ICE configuration follows this path: `new WebTorrent({ tracker: { rtcConfig: { iceServers, iceTransportPolicy } } })` → discovery → tracker → simple-peer → `RTCPeerConnection`. The tracker callback requests at most two speculative offers, limiting empty TURN allocations within the small development port range.
 
-A diagnosztika a rögzített WebTorrent `_peers` Map-jén és a simple-peer `_pc` mezőjén éri el a PC-t; a selected pair és datachannel számlálók a szabványos `getStats()`-ból származnak. A hálózati letöltési mutató a `received`, nem a helyi darabteljességet mérő `downloaded`. Ezeket verzióváltáskor újra tesztelni kell.
+Diagnostics access peer connections through the pinned WebTorrent version’s `_peers` Map and simple-peer’s `_pc` field; selected-pair and datachannel counters come from standard `getStats()`. The network download metric uses `received`, rather than `downloaded`, which measures local piece completion. These integrations require retesting when versions change.
 
-A reseed előtt minden tartós fájlt SHA-256-tal ellenőrzünk, újraépítjük a darabtárat, és az új infoHash-nek egyeznie kell az eredetivel. A letöltött darabok ellenőrzését nem kapcsoljuk ki. A WebTorrent saját `seed()` optimalizációja csak a már ellenőrzött, saját inputra vonatkozik.
+Before reseeding, every persistent file is verified with SHA-256, the piece store is rebuilt, and the new infoHash must match the original. Downloaded-piece verification remains enabled. WebTorrent’s own `seed()` optimization applies only to already verified local input.
 
-A korábbi HTML/CSS renderer és közvetlen PostCSS/value-parser függőségek eltávolítva. A worker az eredeti fájlbytes tartalmat válaszolja meg, ezt P2P-forrás és HTTP-válasz közvetlen byte-összehasonlítása ellenőrzi. A manifest bizalmi horgonya a hostnévben szereplő v1 torrent infoHash: az eredeti bencode `info` bytes SHA-1 hash-ét és a manifestet lefedő darabokat ellenőrizzük; a fájlok ezt követően SHA-256-tal hitelesíthetők.
+The previous HTML/CSS renderer and direct PostCSS/value-parser dependencies were removed. The worker returns original file bytes, verified by direct byte comparison between P2P source and HTTP response. The manifest’s trust anchor is the v1 torrent infoHash in the hostname: the original bencoded `info` bytes’ SHA-1 hash and pieces covering the manifest are checked, after which files can be authenticated with SHA-256.
 
-A külön ablakos modellnél azonos schemeful site, de külön originek szükségesek. A Playwright 1.64.1 alapból kikapcsolja a ThirdPartyStoragePartitioning funkciót; a tesztkonfiguráció ezt visszakapcsolja, és egy külön cross-site cache-próba bizonyítja az elkülönítést. A normál Chrome-beállítások mellett az `app.hppt.localhost` és `<hash>.hppt.localhost` helper/top-level worker és cache azonos partícióba kerül. A korábbi puszta `localhost` és `<hash>.localhost` felépítés erre nem alkalmas.
+The separate-window model requires distinct origins within the same schemeful site. Playwright 1.64.1 disables ThirdPartyStoragePartitioning by default; the test configuration enables it again, and a dedicated cross-site cache probe demonstrates partitioning. With normal Chrome settings, helper/top-level workers and caches on `app.hppt.localhost` and `<hash>.hppt.localhost` share a partition. The old plain `localhost` and `<hash>.localhost` arrangement does not support this.
 
-A `scripts/origins.ts` a régi localhost-alapkonfigurációt egységesen normalizálja a UI, a Vite host, a dev script és az ICE API számára. Az ICE Docker image ezt a modult is tartalmazza. A korábbi UI-origin IndexedDB-je nem törlődik, de az új origin nem fér hozzá automatikusan; a mintamappát újra lehet publikálni.
+`scripts/origins.ts` consistently normalizes legacy localhost defaults for the UI, Vite host, development script, and ICE API. The ICE Docker image includes this module. IndexedDB on the old UI origin is retained, but the new origin cannot access it automatically; the sample folder can be published again.
 
-## Ismert korlátok
+## Known limitations
 
-Statikus HTML/CSS/kép/klasszikus JS, ES-modul, valós relatív útvonalak és azonos originű GET/fetch támogatott. Backend, POST, worker, beágyazott frame és űrlap nincs; explicit hiányzó útvonal 404, általános SPA-fallback nincs. A viewer normál felső szintű oldal, külső linkre és más címre navigálhat: a CSP nem teljes exfiltrációs vagy anonimitási határ. Új P2P-letöltéshez/továbbosztáshoz nyitott HPPT alkalmazás kell. Teljes offline mentés után a saját viewer URL a vezérlőablak nélkül is használható. Új lap blokkolásakor az alkalmazás kézzel kattintható megnyitási linket ad.
+Static HTML/CSS/images/classic JavaScript, ES modules, real relative paths, and same-origin GET/fetch are supported. Backends, POST, workers, embedded frames, and forms are unsupported; explicit missing paths return 404 without a general SPA fallback. The viewer is a normal top-level page and can navigate to external links and other addresses: CSP is not a complete exfiltration or anonymity boundary. New P2P downloads and seeding require an open HPPT app. After a complete offline save, the site’s viewer URL works without the controller window. When new tabs are blocked, the app provides a clickable opening link.
 
-Publikus HTTPS/WSS és TLS TURN telepítés, HTTPS-es protokollregisztráció, LAN/mobil/Firefox/Safari kompatibilitás és többórás credential/allocation futtatás nem történt. Az azonos schemeful site-on belüli cookie-mentes viewer wildcard domain, reverse proxy, tanúsítványok és hitelesítő gateway a telepítő feladata; a README és a production coturn példa jelzi a szükséges beállításokat.
+Public HTTPS/WSS and TLS TURN deployment, HTTPS protocol registration, LAN/mobile/Firefox/Safari compatibility, and multi-hour credential/allocation runs were not tested. Cookie-free viewer wildcard domains within the same schemeful site, reverse proxies, certificates, and the authentication gateway are the deployer’s responsibility. The README and production coturn example describe the required settings.
 
-A `npm audit` 4 high jelzést ad az `ip` tranzitív függőségén keresztül. A [GHSA-2p57-rm9w-gvfp](https://github.com/advisories/GHSA-2p57-rm9w-gvfp) az `isPublic` hibás osztályozását írja le; javított upstream verzió nincs. A tracker az `ip` csomagot az itt kikapcsolt UDP-parserben importálja, a projekt nem használja az `isPublic` függvényt biztonsági döntéshez. A jelzés megmarad és frissítéskor újra értékelendő.
+`npm audit` reports four high-severity findings through the transitive `ip` dependency. [GHSA-2p57-rm9w-gvfp](https://github.com/advisories/GHSA-2p57-rm9w-gvfp) describes incorrect `isPublic` classification; no patched upstream version is available. The tracker imports `ip` in the UDP parser, which is disabled here, and the project does not use `isPublic` for security decisions. The advisory remains and should be reassessed during updates.

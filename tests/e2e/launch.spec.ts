@@ -9,7 +9,7 @@ test('a saved protocol link navigates its own tab without a controller or networ
   await ready(page);
   const hash = await publish(page, 'nested-site', 'pages/home.html');
   await page.evaluate(() => (window as any).htppt.library());
-  await expect(page.locator('#sites')).toContainText('Offline elérhető');
+  await expect(page.locator('#sites')).toContainText('Available offline');
   await page.close();
   const launcher = await context.newPage();
   const network: string[] = [];
@@ -68,7 +68,7 @@ test('a first download starts a separate app with an explicit fallback for block
     await expect(launcher.locator('h1')).toHaveText('Hello, peer!');
     expect(context.pages()).toHaveLength(2); expect(launcher.frames()).toHaveLength(1);
     await expect(controller.locator('#viewer-link')).toHaveAttribute('href', launcher.url());
-    await launcher.locator('#hello').click(); await expect(launcher.locator('#result')).toContainText('JavaScript működik');
+    await launcher.locator('#hello').click(); await expect(launcher.locator('#result')).toContainText('JavaScript works');
   } finally { await a.context.close(); await context.close(); }
 });
 
